@@ -6,8 +6,10 @@ from matplotlib.figure import Figure
 
 class MplCanvas(FigureCanvas):
     def __init__(self):
-        fig = Figure()
-        self.ax = fig.add_subplot(111, projection='3d')
+        # Create a figure without any borders or padding
+        fig = Figure(facecolor='black')
+        self.ax = fig.add_subplot(111, projection='3d', frame_on=False)
+        fig.subplots_adjust(left=0, right=1, top=1, bottom=0)  # Remove padding around plot
         super().__init__(fig)
 
 class SpherePlot(QtWidgets.QWidget):
@@ -31,7 +33,7 @@ class SpherePlot(QtWidgets.QWidget):
     def plot_points(self, coords):
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
 
-        # Set background color
+        # Set background color and remove borders
         self.canvas.ax.set_facecolor('black')
 
         # Plot points in white
