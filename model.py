@@ -31,9 +31,13 @@ class SpherePlot(QtWidgets.QWidget):
     def plot_points(self, coords):
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
         self.canvas.ax.scatter(x, y, z, color='r', s=20)
-        self.canvas.ax.set_xlabel("X")
-        self.canvas.ax.set_ylabel("Y")
-        self.canvas.ax.set_zlabel("Z")
+
+        # Hide grid, axis lines, and labels
+        self.canvas.ax.grid(False)
+        self.canvas.ax.set_axis_off()
+        self.canvas.ax.set_xticks([])
+        self.canvas.ax.set_yticks([])
+        self.canvas.ax.set_zticks([])
 
 def generate_random_coords_on_sphere(num_points):
     # Generate random spherical coordinates and convert to Cartesian
