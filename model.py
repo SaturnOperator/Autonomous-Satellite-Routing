@@ -30,7 +30,18 @@ class SpherePlot(QtWidgets.QWidget):
 
     def plot_points(self, coords):
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
-        self.canvas.ax.scatter(x, y, z, color='r', s=20)
+
+        # Set background color
+        self.canvas.ax.set_facecolor('black')
+
+        # Plot points in white
+        self.canvas.ax.scatter(x, y, z, color='white', s=20)
+
+        # Draw a vertical line through the center of the sphere
+        vertical_line_x = [0, 0]
+        vertical_line_y = [0, 0]
+        vertical_line_z = [-1, 1]
+        self.canvas.ax.plot(vertical_line_x, vertical_line_y, vertical_line_z, color='white', linewidth=2)
 
         # Hide grid, axis lines, and labels
         self.canvas.ax.grid(False)
@@ -38,6 +49,9 @@ class SpherePlot(QtWidgets.QWidget):
         self.canvas.ax.set_xticks([])
         self.canvas.ax.set_yticks([])
         self.canvas.ax.set_zticks([])
+
+        # Make the plot look spherical
+        self.canvas.ax.set_box_aspect([1, 1, 1])  # Equal aspect ratio
 
 def generate_random_coords_on_sphere(num_points):
     # Generate random spherical coordinates and convert to Cartesian
