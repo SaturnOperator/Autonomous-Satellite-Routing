@@ -7,6 +7,27 @@ from PyQt5.QtWidgets import (
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+class Satellite:
+    def __init__(self, longitude, latitude, height, speed):
+        self.longitude = longitude
+        self.latitude = latitude
+        self.height = height
+        self.speed = speed  # Speed in degrees per update cycle
+    
+    def update_position(self):
+        # Update the satellite's position based on its speed
+        self.longitude = (self.longitude + self.speed) % 360  # Wrap longitude within 0-360 degrees
+
+    def get_cartesian_coordinates(self):
+        # Convert spherical (longitude, latitude, height) to Cartesian (x, y, z)
+        r = 1 + self.height  # Assume base radius is 1
+        lon = np.radians(self.longitude)
+        lat = np.radians(self.latitude)
+        x = r * np.cos(lat) * np.cos(lon)
+        y = r * np.cos(lat) * np.sin(lon)
+        z = r * np.sin(lat)
+        return np.array([x, y, z])
+
 class MplCanvas(FigureCanvas):
     def __init__(self):
         fig = Figure(facecolor='black')
@@ -15,12 +36,15 @@ class MplCanvas(FigureCanvas):
         super().__init__(fig)
 
 class SpherePlot(QWidget):
-    def __init__(self, coords):
+    def __init__(self, satellites):
         super().__init__()
-        self.coords = coords
-        self.selected_index = None  # Track selected coordinate index
+        self.satellites = satellites
+        self.selected_index = None  # Track selected satellite index
         self.scatter_plot = None  # Store the scatter plot item
         self.initUI()
+        self.update_graph_timer = QtCore.QTimer()
+        self.update_graph_timer.timeout.connect(self.update_graph)
+        self.update_graph_timer.start(100)  # Update graph every 100 ms
 
     def initUI(self):
         # Main layout
@@ -30,29 +54,29 @@ class SpherePlot(QWidget):
         self.canvas = MplCanvas()
         self.plot_points()
         
-        # Coordinates list
-        self.coord_list = QListWidget()
-        for i, coord in enumerate(self.coords):
-            self.coord_list.addItem(f"Point {i}: {coord}")
+        # Satellite list
+        self.satellite_list = QListWidget()
+        for i in range(len(self.satellites)):
+            self.satellite_list.addItem(f"Satellite {i}")
 
         # Connect list selection to handler
-        self.coord_list.currentRowChanged.connect(self.on_coordinate_selected)
+        self.satellite_list.currentRowChanged.connect(self.on_satellite_selected)
 
-        # Coordinate editor
+        # Coordinate and Speed editor
         self.editor_widget = CoordinateEditor()
-        self.editor_widget.value_changed.connect(self.update_coordinate)
+        self.editor_widget.value_changed.connect(self.update_satellite_attributes)
 
         # Add and delete buttons
-        self.add_button = QPushButton("Add Coordinate")
-        self.add_button.clicked.connect(self.add_coordinate)
+        self.add_button = QPushButton("Add Satellite")
+        self.add_button.clicked.connect(self.add_satellite)
         
-        self.delete_button = QPushButton("Delete Coordinate")
-        self.delete_button.clicked.connect(self.delete_coordinate)
+        self.delete_button = QPushButton("Delete Satellite")
+        self.delete_button.clicked.connect(self.delete_satellite)
 
         # Left side layout (list and editor)
         left_layout = QVBoxLayout()
-        left_layout.addWidget(QLabel("Coordinates"))
-        left_layout.addWidget(self.coord_list)
+        left_layout.addWidget(QLabel("Satellites"))
+        left_layout.addWidget(self.satellite_list)
         left_layout.addWidget(self.editor_widget)
         left_layout.addWidget(self.add_button)
         left_layout.addWidget(self.delete_button)
@@ -62,7 +86,7 @@ class SpherePlot(QWidget):
         main_layout.addWidget(self.canvas)
         
         self.setLayout(main_layout)
-        self.setWindowTitle("3D Sphere Plot with Coordinate Editor")
+        self.setWindowTitle("3D Sphere Plot with Satellite Editor")
         self.setGeometry(100, 100, 1000, 600)
         self.show()
 
@@ -70,9 +94,10 @@ class SpherePlot(QWidget):
         self.canvas.ax.clear()
         self.canvas.ax.set_facecolor('black')
 
-        # Create scatter plot
-        colors = ['red' if i == self.selected_index else 'white' for i in range(len(self.coords))]
-        x, y, z = self.coords[:, 0], self.coords[:, 1], self.coords[:, 2]
+        # Plot each satellite's position
+        colors = ['red' if i == self.selected_index else 'white' for i in range(len(self.satellites))]
+        coords = np.array([satellite.get_cartesian_coordinates() for satellite in self.satellites])
+        x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
         self.scatter_plot = self.canvas.ax.scatter(x, y, z, color=colors, s=20)
 
         vertical_line_x = [0, 0]
@@ -86,55 +111,57 @@ class SpherePlot(QWidget):
         
         self.canvas.draw()
 
-    def on_coordinate_selected(self, index):
+    def on_satellite_selected(self, index):
         if index != self.selected_index:
             self.selected_index = index
             self.plot_points()  # Re-plot to update color
         if index >= 0:
-            coord = self.coords[index]
-            longitude, latitude, height = self.cartesian_to_spherical(coord)
-            self.editor_widget.set_sliders(longitude, latitude, height)
+            satellite = self.satellites[index]
+            self.editor_widget.set_sliders(satellite.longitude, satellite.latitude, satellite.height, satellite.speed)
 
-    def update_coordinate(self, longitude, latitude, height):
+    def update_satellite_attributes(self, longitude, latitude, height, speed):
         if self.selected_index is not None:
-            self.coords[self.selected_index] = self.spherical_to_cartesian(longitude, latitude, height)
-            self.coord_list.item(self.selected_index).setText(f"Point {self.selected_index}: {self.coords[self.selected_index]}")
+            satellite = self.satellites[self.selected_index]
+            satellite.longitude = longitude
+            satellite.latitude = latitude
+            satellite.height = height
+            satellite.speed = speed
             self.plot_points()
 
-    def add_coordinate(self):
-        new_coord = generate_random_coords_on_sphere(1)[0]
-        self.coords = np.vstack([self.coords, new_coord])
-        self.coord_list.addItem(f"Point {len(self.coords) - 1}: {new_coord}")
+    def add_satellite(self):
+        longitude, latitude, height = np.random.uniform(0, 360), np.random.uniform(-90, 90), np.random.uniform(-0.1, 0.1)
+        speed = np.random.uniform(0.5, 2.0)  # Random speed in degrees per update
+        new_satellite = Satellite(longitude, latitude, height, speed)
+        self.satellites.append(new_satellite)
+        self.satellite_list.addItem(f"Satellite {len(self.satellites) - 1}")
         self.plot_points()
 
-    def delete_coordinate(self):
+    def delete_satellite(self):
         if self.selected_index is not None:
-            self.coords = np.delete(self.coords, self.selected_index, axis=0)
-            self.coord_list.takeItem(self.selected_index)
-            self.selected_index = None  # Reset selection
-            self.plot_points()  # Re-plot without the deleted point
+            del self.satellites[self.selected_index]
+            self.satellite_list.takeItem(self.selected_index)
+            # Update selected_index to previous item if available
+            if self.selected_index > 0:
+                self.selected_index -= 1
+            elif len(self.satellites) > 0:
+                self.selected_index = 0
+            else:
+                self.selected_index = None
+            self.plot_points()  # Re-plot without the deleted satellite
+            self.update_satellite_list()
 
-    def cartesian_to_spherical(self, coord):
-        # Convert Cartesian (x, y, z) to spherical (longitude, latitude, height)
-        x, y, z = coord
-        r = np.sqrt(x**2 + y**2 + z**2)
-        longitude = np.degrees(np.arctan2(y, x))
-        latitude = np.degrees(np.arcsin(z / r))
-        height = r - 1  # Assume the radius of the sphere is 1
-        return longitude, latitude, height
+    def update_satellite_list(self):
+        self.satellite_list.clear()
+        for i in range(len(self.satellites)):
+            self.satellite_list.addItem(f"Satellite {i}")
 
-    def spherical_to_cartesian(self, longitude, latitude, height):
-        # Convert spherical (longitude, latitude, height) to Cartesian (x, y, z)
-        r = 1 + height  # Base radius is 1, plus the height adjustment
-        lon = np.radians(longitude)
-        lat = np.radians(latitude)
-        x = r * np.cos(lat) * np.cos(lon)
-        y = r * np.cos(lat) * np.sin(lon)
-        z = r * np.sin(lat)
-        return np.array([x, y, z])
+    def update_graph(self):
+        for satellite in self.satellites:
+            satellite.update_position()  # Update each satellite's position
+        self.plot_points()  # Redraw with updated positions
 
 class CoordinateEditor(QWidget):
-    value_changed = QtCore.pyqtSignal(float, float, float)
+    value_changed = QtCore.pyqtSignal(float, float, float, float)
     
     def __init__(self):
         super().__init__()
@@ -146,10 +173,12 @@ class CoordinateEditor(QWidget):
         self.longitude_slider = self.create_slider(-180, 180, 0)
         self.latitude_slider = self.create_slider(-90, 90, 0)
         self.height_slider = self.create_slider(-10, 10, 0)
+        self.speed_slider = self.create_slider(0, 10, 0.1)  # Speed slider with range from 0 to 5
 
         layout.addRow(QLabel("Longitude"), self.longitude_slider)
         layout.addRow(QLabel("Latitude"), self.latitude_slider)
         layout.addRow(QLabel("Height"), self.height_slider)
+        layout.addRow(QLabel("Speed"), self.speed_slider)
         
         self.setLayout(layout)
 
@@ -163,41 +192,41 @@ class CoordinateEditor(QWidget):
         return slider
 
     def emit_value(self):
-        # Emit the values from sliders for longitude, latitude, and height
         longitude = self.longitude_slider.value()
         latitude = self.latitude_slider.value()
         height = self.height_slider.value() / 100.0  # Scaling down height
-        self.value_changed.emit(longitude, latitude, height)
+        speed = self.speed_slider.value()
+        self.value_changed.emit(longitude, latitude, height, speed)
 
-    def set_sliders(self, longitude, latitude, height):
-        # Temporarily block signals to avoid triggering updates unnecessarily
+    def set_sliders(self, longitude, latitude, height, speed):
         self.longitude_slider.blockSignals(True)
         self.latitude_slider.blockSignals(True)
         self.height_slider.blockSignals(True)
+        self.speed_slider.blockSignals(True)
 
         self.longitude_slider.setValue(int(longitude))
         self.latitude_slider.setValue(int(latitude))
         self.height_slider.setValue(int(height * 100))
+        self.speed_slider.setValue(int(speed))
 
-        # Re-enable signals
         self.longitude_slider.blockSignals(False)
         self.latitude_slider.blockSignals(False)
         self.height_slider.blockSignals(False)
-
-def generate_random_coords_on_sphere(num_points):
-    theta = np.random.uniform(0, 2 * np.pi, num_points)
-    phi = np.random.uniform(-np.pi / 2, np.pi / 2, num_points)
-    x = np.cos(phi) * np.cos(theta)
-    y = np.cos(phi) * np.sin(theta)
-    z = np.sin(phi)
-    return np.column_stack((x, y, z))
+        self.speed_slider.blockSignals(False)
 
 def main():
-    num_points = 100  # For simplicity, using a smaller number of points
-    coords = generate_random_coords_on_sphere(num_points)
+    num_satellites = 100  # Initialize with 5 satellites
+    satellites = [
+        Satellite(
+            longitude=np.random.uniform(0, 360),
+            latitude=np.random.uniform(-90, 90),
+            height=np.random.uniform(-0.1, 0.1),
+            speed=np.random.uniform(0.5, 1)
+        ) for _ in range(num_satellites)
+    ]
 
     app = QtWidgets.QApplication(sys.argv)
-    main_window = SpherePlot(coords)
+    main_window = SpherePlot(satellites)
     sys.exit(app.exec())
 
 if __name__ == '__main__':
