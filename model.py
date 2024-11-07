@@ -7,6 +7,25 @@ from PyQt5.QtWidgets import (
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+# Colour palette 
+COLOUR_LIGHT_BLUE = "#A5A9F4"
+COLUR_GREY = "#696877"
+
+COLOUR_WHITE = "#CCC9E8"
+COLOUR_WHITE_DIM = "#5D5E6E"
+
+COLOUR_RED = "#D44557"
+COLOUR_RED_DIM = "#352A42"
+
+COLOUR_BLUE = "#698EF7"
+COLOUR_BLUE_DIM = "#252A3B"
+
+COLOUR_GREEN = "#6CE999"
+COLOUR_GREEN_DIM = "#22392E"
+
+COLOUR_PURPLE ="#895DD0"
+COLOUR_PURPLE_DIM = "#352647"
+
 class Satellite:
     def __init__(self, longitude, latitude, height, speed):
         self.longitude = longitude
@@ -42,6 +61,7 @@ class SpherePlot(QWidget):
         self.satellites = satellites
         self.selected_indices = []  # Track selected satellite indices
         self.scatter_plot = None
+        self.great_circle_line = None  # Line to represent the great-circle arc
         self.initUI()
         self.update_graph_timer = QtCore.QTimer()
         self.update_graph_timer.timeout.connect(self.update_graph)
@@ -99,15 +119,24 @@ class SpherePlot(QWidget):
         self.canvas.ax.set_facecolor('black')
 
         # Plot each satellite's position
-        colors = ['red' if i in self.selected_indices else 'white' for i in range(len(self.satellites))]
+        colors = [COLOUR_RED if i in self.selected_indices else COLOUR_WHITE for i in range(len(self.satellites))]
         coords = np.array([satellite.get_cartesian_coordinates() for satellite in self.satellites])
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
         self.scatter_plot = self.canvas.ax.scatter(x, y, z, color=colors, s=20)
 
+        # Plot great-circle arc if two satellites are selected
+        if len(self.selected_indices) == 2:
+            sat1 = self.satellites[self.selected_indices[0]]
+            sat2 = self.satellites[self.selected_indices[1]]
+            arc_points = self.calculate_great_circle_arc(sat1, sat2)
+            arc_x, arc_y, arc_z = zip(*arc_points)
+            self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_BLUE, linestyle='--', linewidth=1) # arcline
+
+        # Draw a vertical line through the center
         vertical_line_x = [0, 0]
         vertical_line_y = [0, 0]
         vertical_line_z = [-1, 1]
-        self.canvas.ax.plot(vertical_line_x, vertical_line_y, vertical_line_z, color='white', linewidth=0.5)
+        self.canvas.ax.plot(vertical_line_x, vertical_line_y, vertical_line_z, color=COLOUR_WHITE_DIM, linewidth=0.5)
 
         self.canvas.ax.grid(False)
         self.canvas.ax.set_axis_off()
@@ -118,14 +147,12 @@ class SpherePlot(QWidget):
     def on_satellite_selected(self):
         self.selected_indices = [index.row() for index in self.satellite_list.selectedIndexes()]
         if len(self.selected_indices) == 2:
-            # Disable sliders and calculate the distance
             self.editor_widget.setEnabled(False)
             sat1 = self.satellites[self.selected_indices[0]]
             sat2 = self.satellites[self.selected_indices[1]]
             distance = self.calculate_distance(sat1, sat2)
             self.distance_label.setText(f"Distance: {distance:.2f} km")
         else:
-            # Enable sliders if not exactly two satellites are selected
             self.editor_widget.setEnabled(True)
             self.distance_label.setText("Distance: N/A")
             if len(self.selected_indices) == 1:
@@ -144,7 +171,6 @@ class SpherePlot(QWidget):
             self.plot_points()
 
     def calculate_distance(self, sat1, sat2):
-        # Calculate great-circle distance (haversine formula) between two latitude/longitude points
         lat1, lon1 = np.radians([sat1.latitude, sat1.longitude])
         lat2, lon2 = np.radians([sat2.latitude, sat2.longitude])
 
@@ -155,6 +181,25 @@ class SpherePlot(QWidget):
         c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 
         return self.EARTH_RADIUS_KM * c
+
+    def calculate_great_circle_arc(self, sat1, sat2, num_points=100):
+        # Convert lat/lon to radians
+        lat1, lon1 = np.radians([sat1.latitude, sat1.longitude])
+        lat2, lon2 = np.radians([sat2.latitude, sat2.longitude])
+
+        # Calculate the angle between the two points
+        d = np.arccos(np.sin(lat1) * np.sin(lat2) + np.cos(lat1) * np.cos(lat2) * np.cos(lon2 - lon1))
+
+        # Calculate points along the great circle
+        arc_points = []
+        for t in np.linspace(0, 1, num_points):
+            A = np.sin((1 - t) * d) / np.sin(d)
+            B = np.sin(t * d) / np.sin(d)
+            x = A * np.cos(lat1) * np.cos(lon1) + B * np.cos(lat2) * np.cos(lon2)
+            y = A * np.cos(lat1) * np.sin(lon1) + B * np.cos(lat2) * np.sin(lon2)
+            z = A * np.sin(lat1) + B * np.sin(lat2)
+            arc_points.append((x, y, z))
+        return arc_points
 
     def add_satellite(self):
         longitude, latitude, height = np.random.uniform(0, 360), np.random.uniform(-90, 90), np.random.uniform(-0.1, 0.1)
@@ -183,6 +228,7 @@ class SpherePlot(QWidget):
             satellite.update_position()
         self.plot_points()
         if len(self.selected_indices) == 2:
+            # Update the distance label if two satellites are selected
             sat1 = self.satellites[self.selected_indices[0]]
             sat2 = self.satellites[self.selected_indices[1]]
             distance = self.calculate_distance(sat1, sat2)
@@ -245,12 +291,12 @@ class CoordinateEditor(QWidget):
         self.speed_slider.blockSignals(False)
 
 def main():
-    num_satellites = 100  # Initialize with 5 satellites
+    num_satellites = 100 # Initialize with 100 satellites
     satellites = [
         Satellite(
             longitude=np.random.uniform(0, 360),
             latitude=np.random.uniform(-90, 90),
-            height=np.random.uniform(-0.1, 0.1),
+            height=0, #np.random.uniform(-0.1, 0.1),
             speed=np.random.uniform(0.5, 2.0)
         ) for _ in range(num_satellites)
     ]
