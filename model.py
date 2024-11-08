@@ -62,6 +62,7 @@ class SpherePlot(QWidget):
         self.selected_indices = []  # Track selected satellite indices
         self.scatter_plot = None
         self.great_circle_line = None  # Line to represent the great-circle arc
+        self.pause = False  # Pause state
         self.initUI()
         self.update_graph_timer = QtCore.QTimer()
         self.update_graph_timer.timeout.connect(self.update_graph)
@@ -97,6 +98,11 @@ class SpherePlot(QWidget):
         self.delete_button = QPushButton("Delete Satellite")
         self.delete_button.clicked.connect(self.delete_satellite)
 
+        # Pause toggle button
+        self.pause_button = QPushButton("Pause")
+        self.pause_button.setCheckable(True)
+        self.pause_button.toggled.connect(self.toggle_pause)
+
         # Left side layout (list, editor, and distance)
         left_layout = QVBoxLayout()
         left_layout.addWidget(QLabel("Satellites"))
@@ -105,6 +111,7 @@ class SpherePlot(QWidget):
         left_layout.addWidget(self.distance_label)
         left_layout.addWidget(self.add_button)
         left_layout.addWidget(self.delete_button)
+        left_layout.addWidget(self.pause_button)
 
         main_layout.addLayout(left_layout)
         main_layout.addWidget(self.canvas)
@@ -136,7 +143,24 @@ class SpherePlot(QWidget):
         vertical_line_x = [0, 0]
         vertical_line_y = [0, 0]
         vertical_line_z = [-1, 1]
-        self.canvas.ax.plot(vertical_line_x, vertical_line_y, vertical_line_z, color=COLOUR_WHITE_DIM, linewidth=0.5)
+        self.canvas.ax.plot(vertical_line_x, vertical_line_y, vertical_line_z, color=COLOUR_BLUE_DIM, linewidth=0.5)
+
+        # Plot Sphere in centre
+        # u = np.linspace(0, 2 * np.pi, 20) # 15 segments, relatively low
+        # v = np.linspace(0, np.pi, 10) 
+        # sphere_radius = 0.90  # You can adjust the radius accordingly
+        # sphere_x = sphere_radius * np.outer(np.cos(u), np.sin(v))
+        # sphere_y = sphere_radius * np.outer(np.sin(u), np.sin(v))
+        # sphere_z = sphere_radius * np.outer(np.ones(np.size(u)), np.cos(v))
+        # self.canvas.ax.plot_surface(sphere_x, sphere_y, sphere_z, color=COLOUR_BLUE_DIM, alpha=0.33)
+
+        # Plot the 2D circle
+        ring_theta = np.linspace(0, 2 * np.pi, 50)
+        ring_radius = 1 # You can adjust the ring_radius accordingly
+        ring_x = ring_radius * np.cos(ring_theta)
+        ring_y = ring_radius * np.sin(ring_theta)
+        ring_z = np.zeros_like(ring_theta)  # The circle lies in the XY plane
+        self.canvas.ax.plot(ring_x, ring_y, ring_z, color=COLOUR_BLUE_DIM, linewidth=0.5)
 
         self.canvas.ax.grid(False)
         self.canvas.ax.set_axis_off()
@@ -223,9 +247,14 @@ class SpherePlot(QWidget):
         for i in range(len(self.satellites)):
             self.satellite_list.addItem(f"Satellite {i}")
 
+    def toggle_pause(self, checked):
+        self.pause = checked
+        self.pause_button.setText("Resume" if self.pause else "Pause")
+
     def update_graph(self):
-        for satellite in self.satellites:
-            satellite.update_position()
+        if not self.pause:
+            for satellite in self.satellites:
+                satellite.update_position()
         self.plot_points()
         if len(self.selected_indices) == 2:
             # Update the distance label if two satellites are selected
@@ -246,7 +275,7 @@ class CoordinateEditor(QWidget):
         
         self.longitude_slider = self.create_slider(-180, 180, 0)
         self.latitude_slider = self.create_slider(-90, 90, 0)
-        self.height_slider = self.create_slider(-10, 10, 0)
+        self.height_slider = self.create_slider(0, 5, 0)
         self.speed_slider = self.create_slider(0, 5, 1)
 
         layout.addRow(QLabel("Longitude"), self.longitude_slider)
