@@ -7,6 +7,8 @@ from PyQt5.QtWidgets import (
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+from satellite import Satellite
+
 # Colour palette 
 COLOUR_LIGHT_BLUE = "#A5A9F4"
 COLUR_GREY = "#696877"
@@ -25,26 +27,6 @@ COLOUR_GREEN_DIM = "#22392E"
 
 COLOUR_PURPLE ="#895DD0"
 COLOUR_PURPLE_DIM = "#352647"
-
-class Satellite:
-    def __init__(self, longitude, latitude, height, speed):
-        self.longitude = longitude
-        self.latitude = latitude
-        self.height = height
-        self.speed = speed  # Speed in degrees per update cycle
-    
-    def update_position(self):
-        self.longitude = (self.longitude + self.speed) % 360  # Wrap longitude within 0-360 degrees
-
-    def get_cartesian_coordinates(self):
-        # Convert spherical (longitude, latitude, height) to Cartesian (x, y, z)
-        r = 1 + self.height  # Assume base radius is 1
-        lon = np.radians(self.longitude)
-        lat = np.radians(self.latitude)
-        x = r * np.cos(lat) * np.cos(lon)
-        y = r * np.cos(lat) * np.sin(lon)
-        z = r * np.sin(lat)
-        return np.array([x, y, z])
 
 class MplCanvas(FigureCanvas):
     def __init__(self):
