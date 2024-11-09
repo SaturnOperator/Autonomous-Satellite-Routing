@@ -2,7 +2,7 @@ import sys
 import numpy as np
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import (
-    QListWidget, QSlider, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QFormLayout, QPushButton, QTabWidget
+    QListWidget, QSlider, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QFormLayout, QPushButton, QTabWidget, QMenuBar, QAction
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -93,42 +93,6 @@ class SpherePlot(QWidget):
         add_del_buttons_layout = QHBoxLayout(add_del_buttons)
         add_del_buttons_layout.addWidget(self.add_button)
         add_del_buttons_layout.addWidget(self.delete_button)
-
-        # Distribution Buttons
-        self.dist_grid_button = QPushButton("Distribute to Grid")
-        self.dist_grid_button.clicked.connect(self.distribute_grid)
-
-        self.dist_spiral_button = QPushButton("Distribute to Spiral")
-        self.dist_spiral_button.clicked.connect(self.distribute_spiral)
-
-        self.dist_ring_button = QPushButton("Distribute to Ring")
-        self.dist_ring_button.clicked.connect(self.distribute_ring)
-
-        self.dist_random_button = QPushButton("Distribute to Random")
-        self.dist_random_button.clicked.connect(self.distribute_random)
-
-        self.dist_split_button = QPushButton("Distribute to Split")
-        self.dist_split_button.clicked.connect(self.distribute_split)
-
-        self.dist_cluster_button = QPushButton("Distribute to Cluster")
-        self.dist_cluster_button.clicked.connect(self.distribute_cluster)
-
-        self.uniform_speed_button = QPushButton("Set Uniform Speed")
-        self.uniform_speed_button.clicked.connect(self.set_uniform_speed)
-
-        self.random_speed_button = QPushButton("Set Random Speed")
-        self.random_speed_button.clicked.connect(self.set_random_speed)
-
-        dist_buttons = QWidget()
-        dist_buttons_layout = QVBoxLayout(dist_buttons)
-        dist_buttons_layout.addWidget(self.dist_grid_button)
-        dist_buttons_layout.addWidget(self.dist_spiral_button)
-        dist_buttons_layout.addWidget(self.dist_ring_button)
-        dist_buttons_layout.addWidget(self.dist_random_button)
-        dist_buttons_layout.addWidget(self.dist_split_button)
-        dist_buttons_layout.addWidget(self.dist_cluster_button)
-        dist_buttons_layout.addWidget(self.uniform_speed_button)
-        dist_buttons_layout.addWidget(self.random_speed_button)
         
         # Pause toggle button
         self.pause_button = QPushButton("Pause")
@@ -139,11 +103,9 @@ class SpherePlot(QWidget):
         left_layout = QVBoxLayout()
         left_layout.addWidget(QLabel("Satellites"))
         left_layout.addWidget(self.satellite_list)
-        
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.editor_widget, "Params")
-        self.tabs.addTab(dist_buttons, "Distribute")
 
         left_layout.addWidget(self.tabs)
         left_layout.addWidget(self.distance_label)
@@ -151,6 +113,47 @@ class SpherePlot(QWidget):
         left_layout.addWidget(self.pause_button)
         main_layout.addLayout(left_layout)
         main_layout.addWidget(self.canvas_container)
+
+        # Create menu bar
+        self.menubar = QMenuBar(self)
+        main_layout.setMenuBar(self.menubar)
+        distribute_menu = self.menubar.addMenu("Distribute")
+        
+        # Add distribution functions to menu bar
+        self.dist_grid_action = QAction("Distribute to Grid")
+        self.dist_grid_action.triggered.connect(self.distribute_grid)
+
+        self.dist_spiral_action = QAction("Distribute to Spiral")
+        self.dist_spiral_action.triggered.connect(self.distribute_spiral)
+
+        self.dist_ring_action = QAction("Distribute to Ring")
+        self.dist_ring_action.triggered.connect(self.distribute_ring)
+
+        self.dist_random_action = QAction("Distribute to Random")
+        self.dist_random_action.triggered.connect(self.distribute_random)
+
+        self.dist_split_action = QAction("Distribute to Split")
+        self.dist_split_action.triggered.connect(self.distribute_split)
+
+        self.dist_cluster_action = QAction("Distribute to Cluster")
+        self.dist_cluster_action.triggered.connect(self.distribute_cluster)
+
+        self.uniform_speed_action = QAction("Set Uniform Speed")
+        self.uniform_speed_action.triggered.connect(self.set_uniform_speed)
+
+        self.random_speed_action = QAction("Set Random Speed")
+        self.random_speed_action.triggered.connect(self.set_random_speed)
+
+        distribute_menu.addAction(self.dist_grid_action)
+        distribute_menu.addAction(self.dist_spiral_action)
+        distribute_menu.addAction(self.dist_ring_action)
+        distribute_menu.addAction(self.dist_random_action)
+        distribute_menu.addAction(self.dist_split_action)
+        distribute_menu.addAction(self.dist_cluster_action)
+        distribute_menu.addAction(self.uniform_speed_action)
+        distribute_menu.addAction(self.random_speed_action)
+
+
         
         self.setLayout(main_layout)
         self.setWindowTitle("3D Sphere Plot with Satellite Editor")
@@ -273,7 +276,7 @@ class SpherePlot(QWidget):
         longitude = np.random.uniform(0, 360)
         latitude = np.random.uniform(-90, 90)
         height = 0
-        speed = np.random.uniform(0.5, 1)
+        speed = 0.5
         new_satellite = Satellite(longitude, latitude, height, speed)
         self.satellites.append(new_satellite)
         self.satellite_list.addItem(f"Satellite {len(self.satellites) - 1}")
@@ -416,12 +419,10 @@ class CoordinateEditor(QWidget):
         
         self.longitude_slider = self.create_slider(-180, 180, 0)
         self.latitude_slider = self.create_slider(-90, 90, 0)
-        self.height_slider = self.create_slider(0, 5, 0)
         self.speed_slider = self.create_slider(0, 5, 1)
 
         layout.addRow(QLabel("Longitude"), self.longitude_slider)
         layout.addRow(QLabel("Latitude"), self.latitude_slider)
-        layout.addRow(QLabel("Height"), self.height_slider)
         layout.addRow(QLabel("Speed"), self.speed_slider)
         
         self.setLayout(layout)
@@ -438,7 +439,7 @@ class CoordinateEditor(QWidget):
     def emit_value(self):
         longitude = self.longitude_slider.value()
         latitude = self.latitude_slider.value()
-        height = self.height_slider.value() / 100.0  # Scale down height
+        height = 0
         speed = self.speed_slider.value()
         self.value_changed.emit(longitude, latitude, height, speed)
 
@@ -446,28 +447,25 @@ class CoordinateEditor(QWidget):
         # Temporarily block signals to avoid unnecessary updates
         self.longitude_slider.blockSignals(True)
         self.latitude_slider.blockSignals(True)
-        self.height_slider.blockSignals(True)
         self.speed_slider.blockSignals(True)
 
         self.longitude_slider.setValue(int(longitude))
         self.latitude_slider.setValue(int(latitude))
-        self.height_slider.setValue(int(height * 100))
         self.speed_slider.setValue(int(speed))
 
         # Re-enable signals
         self.longitude_slider.blockSignals(False)
         self.latitude_slider.blockSignals(False)
-        self.height_slider.blockSignals(False)
         self.speed_slider.blockSignals(False)
 
 def main():
-    num_satellites = 300 # Initialize with 100 satellites
+    num_satellites = 100 # Initialize with 100 satellites
     satellites = [
         Satellite(
-            longitude=np.random.uniform(0, 360),
-            latitude=np.random.uniform(-90, 90),
-            height=0, #np.random.uniform(-0.1, 0.1),
-            speed=np.random.uniform(0.5, 1)
+            longitude = np.random.uniform(0, 360),
+            latitude = np.random.uniform(-90, 90),
+            height = 0,
+            speed = 0.5
         ) for _ in range(num_satellites)
     ]
 
