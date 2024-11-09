@@ -35,6 +35,10 @@ class MplCanvas(FigureCanvas):
         fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
         super().__init__(fig)
 
+    # def onclick(self, event):
+    #     point_index = int(event.ind)
+    #     return point_index
+
 class SpherePlot(QWidget):
     EARTH_RADIUS_KM = 6371  # Radius of Earth in kilometers
 
@@ -55,7 +59,14 @@ class SpherePlot(QWidget):
 
         # 3D plot
         self.canvas = MplCanvas()
+        self.canvas.mpl_connect('pick_event', self.canvas_onclick) # Handles clicked nodes in graph
         self.plot_points()
+
+        # Put plot in QWidget, round border 
+        self.canvas_container = QWidget()
+        self.canvas_container.setStyleSheet("border-radius: 10px; background-color: black;")
+        canvas_layout = QVBoxLayout(self.canvas_container)
+        canvas_layout.addWidget(self.canvas)
         
         # Satellite list with multi-selection
         self.satellite_list = QListWidget()
@@ -96,7 +107,7 @@ class SpherePlot(QWidget):
         left_layout.addWidget(self.pause_button)
 
         main_layout.addLayout(left_layout)
-        main_layout.addWidget(self.canvas)
+        main_layout.addWidget(self.canvas_container)
         
         self.setLayout(main_layout)
         self.setWindowTitle("3D Sphere Plot with Satellite Editor")
@@ -111,7 +122,7 @@ class SpherePlot(QWidget):
         colors = [COLOUR_RED if i in self.selected_indices else COLOUR_WHITE for i in range(len(self.satellites))]
         coords = np.array([satellite.get_cartesian_coordinates() for satellite in self.satellites])
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
-        self.scatter_plot = self.canvas.ax.scatter(x, y, z, color=colors, s=20)
+        self.scatter_plot = self.canvas.ax.scatter(x, y, z, color=colors, s=20, picker=True)
 
         # Plot great-circle arc if two satellites are selected
         if len(self.selected_indices) == 2:
@@ -149,6 +160,23 @@ class SpherePlot(QWidget):
         self.canvas.ax.set_box_aspect([1, 1, 1])
         
         self.canvas.draw()
+
+    def canvas_onclick(self, event):
+        # Selects the clicked satellite in the graph view 
+        indices = event.ind # Get selected point (might be multiple if overlapping)
+        modifiers = QtWidgets.QApplication.keyboardModifiers() # Check if control held
+        
+        if (modifiers & QtCore.Qt.ControlModifier): # Ctrl held for mutli/extended-selection
+            selection = self.selected_indices[:1] + [int(indices[0])] # Append original node to clicked node
+            self.satellite_list.clearSelection()
+            self.selected_indices = selection # Update selection in graph view
+            for i in self.selected_indices: # Update selection in list view
+                self.satellite_list.item(i).setSelected(True)
+        else:
+            selection = int(indices[0])
+            self.satellite_list.clearSelection()
+            self.selected_indices = [selection] # Update selection in graph view
+            self.satellite_list.item(selection).setSelected(True) # Update selection in list view
 
     def on_satellite_selected(self):
         self.selected_indices = [index.row() for index in self.satellite_list.selectedIndexes()]
