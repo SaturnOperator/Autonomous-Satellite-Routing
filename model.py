@@ -38,18 +38,18 @@ class MplCanvas(FigureCanvas):
 
 class SpherePlot(QWidget):
     EARTH_RADIUS_KM = 6371  # Radius of Earth in kilometers
+    TIMER_INTERVAL = 100
 
     def __init__(self, satellites):
         super().__init__()
         self.satellites = satellites
         self.selected_indices = []  # Track selected satellite indices
         self.scatter_plot = None
-        self.great_circle_line = None  # Line to represent the great-circle arc
         self.pause = False  # Pause state
         self.initUI()
         self.update_graph_timer = QtCore.QTimer()
         self.update_graph_timer.timeout.connect(self.update_graph)
-        self.update_graph_timer.start(100)
+        self.start_timer()
 
     def initUI(self):
         main_layout = QHBoxLayout()
@@ -178,6 +178,16 @@ class SpherePlot(QWidget):
             arc_x, arc_y, arc_z = zip(*arc_points)
             self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_BLUE, linestyle='--', linewidth=1) # arcline
 
+        elif len(self.selected_indices) > 2:
+            pairs = [[self.selected_indices[i], self.selected_indices[i + 1]] for i in range(len(self.selected_indices) - 1)]
+            for pair in pairs:
+                sat1 = self.satellites[pair[0]]
+                sat2 = self.satellites[pair[1]]
+                arc_points = self.calculate_great_circle_arc(sat1, sat2)
+                arc_x, arc_y, arc_z = zip(*arc_points)
+                self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_BLUE, linestyle='--', linewidth=1) # arcline
+
+
         # Draw a vertical line through the center
         vertical_line_x = [0, 0]
         vertical_line_y = [0, 0]
@@ -197,6 +207,14 @@ class SpherePlot(QWidget):
         self.canvas.ax.set_box_aspect([1, 1, 1])
         
         self.canvas.draw()
+
+    def pause_timer(self):
+        # Pauses the update graph timer.
+        self.update_graph_timer.stop()
+
+    def start_timer(self):
+        # Resumes the update graph timer.
+        self.update_graph_timer.start(self.TIMER_INTERVAL)
 
     def canvas_onclick(self, event):
         # Selects the clicked satellite in the graph view 
@@ -253,7 +271,7 @@ class SpherePlot(QWidget):
 
         return self.EARTH_RADIUS_KM * c
 
-    def calculate_great_circle_arc(self, sat1, sat2, num_points=100):
+    def calculate_great_circle_arc(self, sat1, sat2, num_points=50):
         # Convert lat/lon to radians
         lat1, lon1 = np.radians([sat1.latitude, sat1.longitude])
         lat2, lon2 = np.radians([sat2.latitude, sat2.longitude])
@@ -298,7 +316,12 @@ class SpherePlot(QWidget):
 
     def toggle_pause(self, checked):
         self.pause = checked
-        self.pause_button.setText("Resume" if self.pause else "Pause")
+        if self.pause:
+            self.pause_button.setText("Pause")
+            self.pause_timer()
+        else:
+            self.pause_button.setText("Resume")
+            self.start_timer()
 
     def update_graph(self):
         if not self.pause:
