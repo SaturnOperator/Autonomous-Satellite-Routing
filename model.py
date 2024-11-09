@@ -2,7 +2,7 @@ import sys
 import numpy as np
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import (
-    QListWidget, QSlider, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QFormLayout, QPushButton
+    QListWidget, QSlider, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QFormLayout, QPushButton, QTabWidget
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -11,7 +11,8 @@ from satellite import Satellite
 
 # Colour palette 
 COLOUR_LIGHT_BLUE = "#A5A9F4"
-COLUR_GREY = "#696877"
+COLOUR_GREY = "#696877"
+COLOUR_BLACK = "#202020"
 
 COLOUR_WHITE = "#CCC9E8"
 COLOUR_WHITE_DIM = "#5D5E6E"
@@ -34,10 +35,6 @@ class MplCanvas(FigureCanvas):
         self.ax = fig.add_subplot(111, projection='3d', frame_on=False)
         fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
         super().__init__(fig)
-
-    # def onclick(self, event):
-    #     point_index = int(event.ind)
-    #     return point_index
 
 class SpherePlot(QWidget):
     EARTH_RADIUS_KM = 6371  # Radius of Earth in kilometers
@@ -91,6 +88,48 @@ class SpherePlot(QWidget):
         self.delete_button = QPushButton("Delete Satellite")
         self.delete_button.clicked.connect(self.delete_satellite)
 
+        # Put Add/Delete buttons in same row
+        add_del_buttons = QWidget()
+        add_del_buttons_layout = QHBoxLayout(add_del_buttons)
+        add_del_buttons_layout.addWidget(self.add_button)
+        add_del_buttons_layout.addWidget(self.delete_button)
+
+        # Distribution Buttons
+        self.dist_grid_button = QPushButton("Distribute to Grid")
+        self.dist_grid_button.clicked.connect(self.distribute_grid)
+
+        self.dist_spiral_button = QPushButton("Distribute to Spiral")
+        self.dist_spiral_button.clicked.connect(self.distribute_spiral)
+
+        self.dist_ring_button = QPushButton("Distribute to Ring")
+        self.dist_ring_button.clicked.connect(self.distribute_ring)
+
+        self.dist_random_button = QPushButton("Distribute to Random")
+        self.dist_random_button.clicked.connect(self.distribute_random)
+
+        self.dist_split_button = QPushButton("Distribute to Split")
+        self.dist_split_button.clicked.connect(self.distribute_split)
+
+        self.dist_cluster_button = QPushButton("Distribute to Cluster")
+        self.dist_cluster_button.clicked.connect(self.distribute_cluster)
+
+        self.uniform_speed_button = QPushButton("Set Uniform Speed")
+        self.uniform_speed_button.clicked.connect(self.set_uniform_speed)
+
+        self.random_speed_button = QPushButton("Set Random Speed")
+        self.random_speed_button.clicked.connect(self.set_random_speed)
+
+        dist_buttons = QWidget()
+        dist_buttons_layout = QVBoxLayout(dist_buttons)
+        dist_buttons_layout.addWidget(self.dist_grid_button)
+        dist_buttons_layout.addWidget(self.dist_spiral_button)
+        dist_buttons_layout.addWidget(self.dist_ring_button)
+        dist_buttons_layout.addWidget(self.dist_random_button)
+        dist_buttons_layout.addWidget(self.dist_split_button)
+        dist_buttons_layout.addWidget(self.dist_cluster_button)
+        dist_buttons_layout.addWidget(self.uniform_speed_button)
+        dist_buttons_layout.addWidget(self.random_speed_button)
+        
         # Pause toggle button
         self.pause_button = QPushButton("Pause")
         self.pause_button.setCheckable(True)
@@ -100,12 +139,16 @@ class SpherePlot(QWidget):
         left_layout = QVBoxLayout()
         left_layout.addWidget(QLabel("Satellites"))
         left_layout.addWidget(self.satellite_list)
-        left_layout.addWidget(self.editor_widget)
-        left_layout.addWidget(self.distance_label)
-        left_layout.addWidget(self.add_button)
-        left_layout.addWidget(self.delete_button)
-        left_layout.addWidget(self.pause_button)
+        
 
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.editor_widget, "Params")
+        self.tabs.addTab(dist_buttons, "Distribute")
+
+        left_layout.addWidget(self.tabs)
+        left_layout.addWidget(self.distance_label)
+        left_layout.addWidget(add_del_buttons)
+        left_layout.addWidget(self.pause_button)
         main_layout.addLayout(left_layout)
         main_layout.addWidget(self.canvas_container)
         
@@ -137,15 +180,6 @@ class SpherePlot(QWidget):
         vertical_line_y = [0, 0]
         vertical_line_z = [-1, 1]
         self.canvas.ax.plot(vertical_line_x, vertical_line_y, vertical_line_z, color=COLOUR_BLUE_DIM, linewidth=0.5)
-
-        # Plot Sphere in centre
-        # u = np.linspace(0, 2 * np.pi, 20) # 15 segments, relatively low
-        # v = np.linspace(0, np.pi, 10) 
-        # sphere_radius = 0.90  # You can adjust the radius accordingly
-        # sphere_x = sphere_radius * np.outer(np.cos(u), np.sin(v))
-        # sphere_y = sphere_radius * np.outer(np.sin(u), np.sin(v))
-        # sphere_z = sphere_radius * np.outer(np.ones(np.size(u)), np.cos(v))
-        # self.canvas.ax.plot_surface(sphere_x, sphere_y, sphere_z, color=COLOUR_BLUE_DIM, alpha=0.33)
 
         # Plot the 2D circle
         ring_theta = np.linspace(0, 2 * np.pi, 50)
@@ -236,8 +270,10 @@ class SpherePlot(QWidget):
         return arc_points
 
     def add_satellite(self):
-        longitude, latitude, height = np.random.uniform(0, 360), np.random.uniform(-90, 90), np.random.uniform(-0.1, 0.1)
-        speed = np.random.uniform(0.5, 2.0)
+        longitude = np.random.uniform(0, 360)
+        latitude = np.random.uniform(-90, 90)
+        height = 0
+        speed = np.random.uniform(0.5, 1)
         new_satellite = Satellite(longitude, latitude, height, speed)
         self.satellites.append(new_satellite)
         self.satellite_list.addItem(f"Satellite {len(self.satellites) - 1}")
@@ -272,6 +308,101 @@ class SpherePlot(QWidget):
             sat2 = self.satellites[self.selected_indices[1]]
             distance = self.calculate_distance(sat1, sat2)
             self.distance_label.setText(f"Distance: {distance:.2f} km")
+
+    def distribute_grid(self):
+        # Grid Distribution
+        n = len(self.satellites)
+        num_latitudes = int(np.sqrt(n))
+        num_longitudes = int(np.sqrt(n))
+
+        latitudes = np.linspace(-90, 90, num_latitudes)
+        longitudes = np.linspace(0, 360, num_longitudes, endpoint=False)
+        i = 0
+        for lat in latitudes:
+            for lon in longitudes:
+                if i < n:
+                    self.satellites[i].latitude = lat
+                    self.satellites[i].longitude = lon
+                    i += 1
+        self.plot_points()
+
+    def distribute_spiral(self):
+        # Golden Ratio Distribution
+        n = len(self.satellites)
+        if n < 2:
+            return
+        golden_angle = np.pi * (3 - np.sqrt(5))  # Approximate golden angle in radians
+        for i in range(len(self.satellites)):
+            self.satellites[i].latitude = np.degrees(np.arcsin(-1 + 2 * i / (n - 1)))  # Distribute latitude evenly between -90 and 90
+            self.satellites[i].longitude = np.degrees((i * golden_angle) % (2 * np.pi))  # Distribute longitude based on golden angle
+        self.plot_points()
+
+    def distribute_ring(self):
+        n = len(self.satellites)
+        latitude = 0  # All satellites are on the equatorial plane
+        longitudes = np.linspace(0, 360, n, endpoint=False)  # Evenly spaced longitudes around the ring
+
+        for i in range(n):
+            self.satellites[i].latitude = latitude
+            self.satellites[i].longitude = longitudes[i]
+        self.plot_points()
+
+    def distribute_random(self):
+        for i in range(len(self.satellites)):
+            self.satellites[i].latitude = np.random.uniform(-90, 90)
+            self.satellites[i].longitude = np.random.uniform(0, 360)
+        self.plot_points()
+
+    def distribute_split(self):
+        n = len(self.satellites)
+        half_n = n // 2
+
+        if(n < 2):
+            return
+        
+        # Top hemisphere distribution
+        for i in range(half_n):
+            latitude = np.random.uniform(35, 90)  # Random latitude between 0 and 90 (top hemisphere)
+            longitude = np.linspace(0, 360, half_n, endpoint=False)[i % half_n]  # Evenly spaced longitudes
+            self.satellites[i].latitude = latitude
+            self.satellites[i].longitude = longitude
+        
+        # Bottom hemisphere distribution
+        for i in range(half_n, n):
+            latitude = np.random.uniform(-90, -35)  # Random latitude between -90 and 0 (bottom hemisphere)
+            longitude = np.linspace(0, 360, half_n, endpoint=False)[i % half_n]  # Evenly spaced longitudes
+            self.satellites[i].latitude = latitude
+            self.satellites[i].longitude = longitude
+        self.plot_points()
+
+    def distribute_cluster(self):
+        n = len(self.satellites)
+        # Clustered distribution
+        num_clusters = 5  # Number of clusters
+
+        if n < num_clusters: # Handle edge case
+            num_clusters = n
+
+        satellites_per_cluster = n // num_clusters
+        cluster_centers = [(np.random.uniform(-90, 90), np.random.uniform(0, 360)) for _ in range(num_clusters)]
+        
+        for i in range(n):
+            cluster_idx = i // satellites_per_cluster
+            center_lat, center_lon = cluster_centers[cluster_idx % num_clusters]
+            latitude = np.random.normal(center_lat, 5)  # Cluster around the center latitude with some variance
+            longitude = (np.random.normal(center_lon, 10)) % 360  # Cluster around the center longitude with some variance
+            self.satellites[i].latitude = np.clip(latitude, -90, 90)  # Ensure latitude stays within bounds
+            self.satellites[i].longitude = longitude
+        self.plot_points()
+
+    def set_uniform_speed(self):
+        for i in range(len(self.satellites)):
+            self.satellites[i].speed = 0.5
+
+    def set_random_speed(self):
+        for i in range(len(self.satellites)):
+            self.satellites[i].speed = np.random.uniform(0.5, 1)
+
 
 class CoordinateEditor(QWidget):
     value_changed = QtCore.pyqtSignal(float, float, float, float)
@@ -330,13 +461,13 @@ class CoordinateEditor(QWidget):
         self.speed_slider.blockSignals(False)
 
 def main():
-    num_satellites = 100 # Initialize with 100 satellites
+    num_satellites = 300 # Initialize with 100 satellites
     satellites = [
         Satellite(
             longitude=np.random.uniform(0, 360),
             latitude=np.random.uniform(-90, 90),
             height=0, #np.random.uniform(-0.1, 0.1),
-            speed=np.random.uniform(0.5, 2.0)
+            speed=np.random.uniform(0.5, 1)
         ) for _ in range(num_satellites)
     ]
 
