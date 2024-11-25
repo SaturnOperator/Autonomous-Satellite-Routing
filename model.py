@@ -2,7 +2,7 @@ import sys
 import numpy as np
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import (
-    QListWidget, QSlider, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QFormLayout, QPushButton, QTabWidget, QMenuBar, QAction
+    QListWidget, QSlider, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QFormLayout, QPushButton, QTabWidget, QMenuBar, QAction, QSpinBox, QDoubleSpinBox, QProgressBar
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -63,7 +63,6 @@ class SpherePlot(QWidget):
         # 3D plot
         self.canvas = MplCanvas()
         self.canvas.mpl_connect('pick_event', self.canvas_onclick) # Handles clicked nodes in graph
-        self.plot_points()
 
         # Put plot in QWidget, round border 
         self.canvas_container = QWidget()
@@ -110,8 +109,12 @@ class SpherePlot(QWidget):
         left_layout.addWidget(QLabel("Satellites"))
         left_layout.addWidget(self.satellite_list)
 
+        # Add tab for training parameters
+        self.train_params = TrainParameters(self.constellation, self.satellites)
+
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.editor_widget, "Params")
+        self.tabs.addTab(self.train_params, "Train")
+        self.tabs.addTab(self.editor_widget, "Satellites")
 
         left_layout.addWidget(self.tabs)
         left_layout.addWidget(self.distance_label)
@@ -164,13 +167,19 @@ class SpherePlot(QWidget):
         self.train_action = QAction("Train Q-Learning")
         self.train_action.triggered.connect(self.train_init)
         train_menu.addAction(self.train_action)
-        
+
+        self.train_button = QPushButton("Route Satellites")
+        self.train_button.clicked.connect(self.train_init)
+        left_layout.addWidget(self.train_button)
+
+        self.plot_points() # Update graph
         self.setLayout(main_layout)
         self.setWindowTitle("3D Sphere Plot with Satellite Editor")
         self.setGeometry(100, 100, 1000, 600)
         self.show()
 
     def plot_points(self):
+        self.train_params.update_progress_bar()
         self.canvas.ax.clear()
         self.canvas.ax.set_facecolor('black')
 
@@ -181,7 +190,7 @@ class SpherePlot(QWidget):
 
         for i, sat in enumerate(self.satellites):
             if sat.index in self.path:
-                colors[i] = COLOUR_BLUE
+                colors[i] = COLOUR_GREEN
             if i in self.selected_indices:
                 colors[i] = COLOUR_RED
 
@@ -197,7 +206,7 @@ class SpherePlot(QWidget):
             sat2 = self.satellites[self.selected_indices[1]]
             arc_points = self.calculate_great_circle_arc(sat1, sat2)
             arc_x, arc_y, arc_z = zip(*arc_points)
-            self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_PURPLE, linestyle='--', linewidth=1) # arcline
+            self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_BLUE, linestyle='--', linewidth=1) # arcline
 
         if len(self.path) > 1:
             pairs = [[self.path[i], self.path[i + 1]] for i in range(len(self.path) - 1)]
@@ -446,7 +455,7 @@ class SpherePlot(QWidget):
     def train_multithread(self, start_index, end_index):
         # Runs training on its own process to not slow down other operations
         self.train_thread = QThread()
-        self.train_worker = TrainProcess(self.constellation, self.satellites, start_index, end_index, 5000)
+        self.train_worker = TrainProcess(self.constellation, self.satellites, start_index, end_index)
         self.train_worker.moveToThread(self.train_thread)
 
         self.train_thread.started.connect(self.train_worker.run)
@@ -475,18 +484,181 @@ class TrainProcess(QObject):
     progress = pyqtSignal(str)  # Emit progress updates
     results = Queue()
 
-    def __init__(self, constellation, satellites, start_index, end_index, iterations):
+    def __init__(self, constellation, satellites, start_index, end_index):
         super().__init__()
         self.constellation = constellation
         self.satellites = satellites
         self.start_index = start_index
         self.end_index = end_index
-        self.iterations = iterations
 
     def run(self):
         # Run train function in the background
-        self.constellation.train_wrapper(self.satellites, self.start_index, self.end_index, self.iterations, self.results)
+        self.constellation.train_wrapper(self.satellites, self.start_index, self.end_index, self.results)
         self.finished.emit()
+
+class TrainParameters(QWidget):
+    # Signal emitted when a parameter changes
+    parameter_changed = pyqtSignal(str, object)
+
+    def __init__(self, constellation, satellites):
+        super().__init__()
+
+        self.constellation = constellation
+        self.satellites = satellites
+
+        self.defaults = {
+            'MAX_ITERATIONS': self.constellation.MAX_ITERATIONS,
+            'ALPHA': Satellite.ALPHA,
+            'GAMMA': Satellite.GAMMA,
+            'EPSILON': Satellite.EPSILON,
+            'DELAY_LOW': Satellite.DELAY_LOW,
+            'DELAY_MEDIUM': Satellite.DELAY_MEDIUM,
+            'CONGESTION_LOW': Satellite.CONGESTION_LOW,
+            'CONGESTION_MEDIUM': Satellite.CONGESTION_MEDIUM,
+            'CONGESTION_HIGH': Satellite.CONGESTION_HIGH,
+        }
+
+        self.initUI()
+
+    def initUI(self):
+        # Main Layout
+        main_layout = QVBoxLayout()
+
+        # Form Layout for parameters
+        form_layout = QFormLayout()
+
+        # Add max_iterations parameter
+        self.max_iterations_spinbox = QSpinBox()
+        self.max_iterations_spinbox.setRange(1, 100000)
+        self.max_iterations_spinbox.setValue(5000)  # Default value
+        self.max_iterations_spinbox.valueChanged.connect(self.update_max_iterations)
+        form_layout.addRow(QLabel("Max Iterations:"), self.max_iterations_spinbox)
+
+        # Add Satellite parameters
+        self.alpha_spinbox = QDoubleSpinBox()
+        self.alpha_spinbox.setRange(0.0, 1.0)
+        self.alpha_spinbox.setSingleStep(0.01)
+        self.alpha_spinbox.setValue(Satellite.ALPHA)
+        self.alpha_spinbox.valueChanged.connect(self.update_alpha)
+        form_layout.addRow(QLabel("Learning Rate (α):"), self.alpha_spinbox)
+
+        self.gamma_spinbox = QDoubleSpinBox()
+        self.gamma_spinbox.setRange(0.0, 1.0)
+        self.gamma_spinbox.setSingleStep(0.01)
+        self.gamma_spinbox.setValue(Satellite.GAMMA)
+        self.gamma_spinbox.valueChanged.connect(self.update_gamma)
+        form_layout.addRow(QLabel("Discount Factor (γ):"), self.gamma_spinbox)
+
+        self.epsilon_spinbox = QDoubleSpinBox()
+        self.epsilon_spinbox.setRange(0.0, 1.0)
+        self.epsilon_spinbox.setSingleStep(0.01)
+        self.epsilon_spinbox.setValue(Satellite.EPSILON)
+        self.epsilon_spinbox.valueChanged.connect(self.update_epsilon)
+        form_layout.addRow(QLabel("Exploration Rate (ε):"), self.epsilon_spinbox)
+
+        self.delay_low_spinbox = QSpinBox()
+        self.delay_low_spinbox.setRange(0, 100000)
+        self.delay_low_spinbox.setValue(Satellite.DELAY_LOW)
+        self.delay_low_spinbox.valueChanged.connect(self.update_delay_low)
+        form_layout.addRow(QLabel("Low Latency Thresh:"), self.delay_low_spinbox)
+
+        self.delay_medium_spinbox = QSpinBox()
+        self.delay_medium_spinbox.setRange(0, 100000)
+        self.delay_medium_spinbox.setValue(Satellite.DELAY_MEDIUM)
+        self.delay_medium_spinbox.valueChanged.connect(self.update_delay_medium)
+        form_layout.addRow(QLabel("Medium Latency Thresh:"), self.delay_medium_spinbox)
+
+        self.congestion_low_spinbox = QSpinBox()
+        self.congestion_low_spinbox.setRange(0, 100)
+        self.congestion_low_spinbox.setValue(Satellite.CONGESTION_LOW)
+        self.congestion_low_spinbox.valueChanged.connect(self.update_congestion_low)
+        form_layout.addRow(QLabel("Low Congestion Thresh:"), self.congestion_low_spinbox)
+
+        self.congestion_medium_spinbox = QSpinBox()
+        self.congestion_medium_spinbox.setRange(0, 100)
+        self.congestion_medium_spinbox.setValue(Satellite.CONGESTION_MEDIUM)
+        self.congestion_medium_spinbox.valueChanged.connect(self.update_congestion_medium)
+        form_layout.addRow(QLabel("Medium Congestion Thresh:"), self.congestion_medium_spinbox)
+
+        self.congestion_high_spinbox = QSpinBox()
+        self.congestion_high_spinbox.setRange(0, 100)
+        self.congestion_high_spinbox.setValue(Satellite.CONGESTION_HIGH)
+        self.congestion_high_spinbox.valueChanged.connect(self.update_congestion_high)
+        form_layout.addRow(QLabel("High Congestion Thresh:"), self.congestion_high_spinbox)
+
+        # Add form to the main layout
+        main_layout.addLayout(form_layout)
+
+        # Buttons to reset or close
+        button_layout = QHBoxLayout()
+        self.reset_button = QPushButton("Reset to Default")
+        self.reset_button.clicked.connect(self.reset_defaults)
+        button_layout.addWidget(self.reset_button)
+
+
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, self.constellation.MAX_ITERATIONS)  # Range from 0 to 100%
+        self.progress_bar.setValue(self.constellation.iteration_count)
+        main_layout.addWidget(self.progress_bar)
+
+
+        main_layout.addLayout(button_layout)
+        self.setLayout(main_layout)
+
+    # Update methods
+    def update_max_iterations(self, value):
+        self.constellation.MAX_ITERATIONS = value
+        self.progress_bar.setRange(0, self.constellation.MAX_ITERATIONS)
+        self.parameter_changed.emit("max_iterations", value)
+
+    def update_alpha(self, value):
+        Satellite.ALPHA = value
+        self.parameter_changed.emit("ALPHA", value)
+
+    def update_gamma(self, value):
+        Satellite.GAMMA = value
+        self.parameter_changed.emit("GAMMA", value)
+
+    def update_epsilon(self, value):
+        Satellite.EPSILON = value
+        self.parameter_changed.emit("EPSILON", value)
+
+    def update_delay_low(self, value):
+        Satellite.DELAY_LOW = value
+        self.parameter_changed.emit("DELAY_LOW", value)
+
+    def update_delay_medium(self, value):
+        Satellite.DELAY_MEDIUM = value
+        self.parameter_changed.emit("DELAY_MEDIUM", value)
+
+    def update_congestion_low(self, value):
+        Satellite.CONGESTION_LOW = value
+        self.parameter_changed.emit("CONGESTION_LOW", value)
+
+    def update_congestion_medium(self, value):
+        Satellite.CONGESTION_MEDIUM = value
+        self.parameter_changed.emit("CONGESTION_MEDIUM", value)
+
+    def update_congestion_high(self, value):
+        Satellite.CONGESTION_HIGH = value
+        self.parameter_changed.emit("CONGESTION_HIGH", value)
+
+    def update_progress_bar(self):
+        # Updates the progress bar and label
+        self.progress_bar.setValue(self.constellation.iteration_count)
+
+    # Reset to default values
+    def reset_defaults(self):
+        self.max_iterations_spinbox.setValue(self.defaults['MAX_ITERATIONS'])
+        self.alpha_spinbox.setValue(self.defaults['ALPHA'])
+        self.gamma_spinbox.setValue(self.defaults['GAMMA'])
+        self.epsilon_spinbox.setValue(self.defaults['EPSILON'])
+        self.delay_low_spinbox.setValue(self.defaults['DELAY_LOW'])
+        self.delay_medium_spinbox.setValue(self.defaults['DELAY_MEDIUM'])
+        self.congestion_low_spinbox.setValue(self.defaults['CONGESTION_LOW'])
+        self.congestion_medium_spinbox.setValue(self.defaults['CONGESTION_MEDIUM'])
+        self.congestion_high_spinbox.setValue(self.defaults['CONGESTION_HIGH'])
 
 class CoordinateEditor(QWidget):
     value_changed = QtCore.pyqtSignal(float, float, float, float)

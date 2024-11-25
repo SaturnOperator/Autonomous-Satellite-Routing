@@ -4,6 +4,8 @@ from multiprocessing import Queue
 from satellite import Satellite
 
 class Constellation:
+    MAX_ITERATIONS = 5000
+    iteration_count = 0
 
     def precompute_matrices(self, satellites):
         self.satellites = satellites
@@ -49,7 +51,7 @@ class Constellation:
     def train_iteration(self, start_satellite, end_satellite):
         current_satellite = start_satellite
         path = [current_satellite]
-        max_steps = 2000
+        max_steps = 10000
         step = 0
         while current_satellite != end_satellite:
             if step > max_steps:
@@ -93,14 +95,15 @@ class Constellation:
                 break
         return path
 
-    def train(self, satellites, start_index, end_index, max_iterations=5000):
+    def train(self, satellites, start_index, end_index):
         self.precompute_matrices(satellites)
         start_satellite = self.satellites[start_index]
         end_satellite = self.satellites[end_index]
 
         print("Starting Q-Learning Training:")
-        for i in range(max_iterations):
-            print(f"\t{i+1}/{max_iterations}")
+        for i in range(self.MAX_ITERATIONS):
+            print(f"\t{i+1}/{self.MAX_ITERATIONS}")
+            self.iteration_count = i+1
             # Reset connections for all satellites
             for sat in self.satellites:
                 sat.connection_count = 0
@@ -110,9 +113,9 @@ class Constellation:
         print("Training complete, optimal path:", [sat.index for sat in optimal_path])
         return optimal_path
 
-    def train_wrapper(self, satellites, start_index, end_index, max_iterations, results):
+    def train_wrapper(self, satellites, start_index, end_index, results):
         try:
-            optimal_path = self.train(satellites, start_index, end_index, max_iterations)
+            optimal_path = self.train(satellites, start_index, end_index)
             results.put(optimal_path)
         except Exception as e:
             if e.errno == errno.EPIPE: 

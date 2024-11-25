@@ -4,23 +4,23 @@ class Satellite:
     EARTH_RADIUS = 6371
 
     # State Thresholds
-    DELAY_LOW = 200*5 # Max distance for low LATENCY
-    DELAY_MEDIUM = 1000*5 # Max distance for medium LATENCY, anything above is high
+    DELAY_LOW = 1000 # Max distance for low LATENCY
+    DELAY_MEDIUM = 5000 # Max distance for medium LATENCY, anything above is high
     CONGESTION_LOW = 1 # Max connections for low congestion,
     CONGESTION_MEDIUM = 3 # Max connections for medium congestion, anything above is high
     CONGESTION_HIGH = 5 # Can't accept connections after this value
 
-    ALPHA = 0.50 # learning rate
-    GAMMA = 0.95 # discount factor
-    EPSILON = 0.1  # exploration rate
+    ALPHA = 0.50 # learning rate (α)
+    GAMMA = 0.95 # discount factor (γ)
+    EPSILON = 0.1  # exploration rate (ε)
+
+    index = 0 # Satellite index in the constellation network
 
     # Class variables for precomputed matrices
     satellites = []
     visibility_matrix = [[]]
     distance_matrix = [[]]
     latency_matrix = [[]]
-
-    index = 0
 
     def __init__(self, longitude, latitude, height, speed):
         self.longitude = longitude
