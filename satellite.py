@@ -59,7 +59,7 @@ class Satellite:
         # Compute angle in degrees
         angle = np.degrees(np.arccos(dot_product))
         
-        # If angle > 90 degrees, the other satellite is out of sight
+        # If angle > 45 degrees, the other satellite is out of sight
         return angle > 75
 
     def calculate_distance(self, other):

@@ -266,18 +266,13 @@ class SpherePlot(QWidget):
     def on_satellite_selected(self):
         self.selected_indices = [index.row() for index in self.satellite_list.selectedIndexes()]
         if len(self.selected_indices) == 2:
-            self.editor_widget.setEnabled(False)
-            sat1 = self.satellites[self.selected_indices[0]]
-            sat2 = self.satellites[self.selected_indices[1]]
-            distance = sat1.calculate_distance(sat2)
-            self.distance_label.setText(f"Distance: {distance:.2f} km")
+            pass
         else:
             self.editor_widget.setEnabled(True)
-            self.distance_label.setText("Distance: N/A")
+            self.distance_label.setText("")
             if len(self.selected_indices) == 1:
                 satellite = self.satellites[self.selected_indices[0]]
                 self.editor_widget.set_sliders(satellite.longitude, satellite.latitude, satellite.height, satellite.speed)
-
         self.plot_points()
 
     def update_satellite_attributes(self, longitude, latitude, height, speed):
@@ -351,7 +346,10 @@ class SpherePlot(QWidget):
             sat1 = self.satellites[self.selected_indices[0]]
             sat2 = self.satellites[self.selected_indices[1]]
             distance = sat1.calculate_distance(sat2)
-            self.distance_label.setText(f"Distance: {distance:.2f} km")
+            visible = not sat1.out_of_sight(sat2)
+            color = COLOUR_GREEN if visible else COLOUR_RED
+            self.distance_label.setText(f"<span style='color: {color}'>●</span> Distance: {distance:.2f} KM")
+
 
     def distribute_grid(self):
         # Grid Distribution
