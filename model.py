@@ -7,7 +7,11 @@ from PyQt5.QtWidgets import (
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from satellite import Satellite, Constellation
+from multiprocessing import Queue
+from PyQt5.QtCore import QThread, pyqtSignal, QObject
+
+from satellite import Satellite
+from constellation import Constellation
 
 # Colour palette 
 COLOUR_LIGHT_BLUE = "#A5A9F4"
@@ -171,7 +175,18 @@ class SpherePlot(QWidget):
         self.canvas.ax.set_facecolor('black')
 
         # Plot each satellite's position
-        colors = [COLOUR_RED if i in self.selected_indices else COLOUR_WHITE for i in range(len(self.satellites))]
+        # colors = [COLOUR_RED if i in self.selected_indices else COLOUR_WHITE for i in range(len(self.satellites))]
+        
+        colors = [COLOUR_WHITE] * len(self.satellites) # Init all as white
+
+        for i, sat in enumerate(self.satellites):
+            if sat.index in self.path:
+                colors[i] = COLOUR_BLUE
+            if i in self.selected_indices:
+                colors[i] = COLOUR_RED
+
+
+
         coords = np.array([satellite.get_cartesian_coordinates() for satellite in self.satellites])
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
         self.scatter_plot = self.canvas.ax.scatter(x, y, z, color=colors, s=20, picker=True)
@@ -182,13 +197,13 @@ class SpherePlot(QWidget):
             sat2 = self.satellites[self.selected_indices[1]]
             arc_points = self.calculate_great_circle_arc(sat1, sat2)
             arc_x, arc_y, arc_z = zip(*arc_points)
-            self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_BLUE, linestyle='--', linewidth=1) # arcline
+            self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_PURPLE, linestyle='--', linewidth=1) # arcline
 
-        elif len(self.path) > 1:
+        if len(self.path) > 1:
             pairs = [[self.path[i], self.path[i + 1]] for i in range(len(self.path) - 1)]
             for pair in pairs:
-                sat1 = pair[0]
-                sat2 = pair[1]
+                sat1 = self.satellites[pair[0]]
+                sat2 = self.satellites[pair[1]]
                 arc_points = self.calculate_great_circle_arc(sat1, sat2)
                 arc_x, arc_y, arc_z = zip(*arc_points)
                 self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_GREEN, linestyle='-', linewidth=1) # arcline
@@ -423,40 +438,25 @@ class SpherePlot(QWidget):
         for i in range(len(self.satellites)):
             self.satellites[i].speed = np.random.uniform(0.5, 1)
 
-    def train_iteration(self, start_satellite, end_satellite):
-        current_satellite = start_satellite
-        path = [current_satellite]
-        while current_satellite != end_satellite:
-            state_current = current_satellite.get_state(end_satellite)
-            possible_actions = current_satellite.get_possible_actions(self.satellites)
-            if not possible_actions:
-                # No possible actions; terminate the iteration
-                break
+    def get_train_results(self):
+        results = self.train_worker.results.get()
+        print(results)
+        self.path = [sat.index for sat in results]
 
-            action_current = current_satellite.choose_action(state_current, possible_actions)
-            next_satellite = action_current
+    def train_multithread(self, start_index, end_index):
+        # Runs training on its own process to not slow down other operations
+        self.train_thread = QThread()
+        self.train_worker = TrainProcess(self.constellation, self.satellites, start_index, end_index, 5000)
+        self.train_worker.moveToThread(self.train_thread)
 
-            # Simulate adding a connection (increasing congestion)
-            # current_satellite.connections.append(next_satellite)
-            # next_satellite.connections.append(current_satellite)
+        self.train_thread.started.connect(self.train_worker.run)
+        self.train_worker.finished.connect(self.train_thread.quit)  # End the thread after completion
+        self.train_worker.finished.connect(self.get_train_results)
+        self.train_worker.finished.connect(self.train_worker.deleteLater)
+        self.train_thread.finished.connect(self.train_thread.deleteLater)
 
-            state_next = next_satellite.get_state(end_satellite)
-            reward = current_satellite.get_reward(state_next, next_satellite == end_satellite)
-            current_satellite.update_q_value(state_current, action_current, reward, state_next, self.satellites)
-
-            # Simulate removing the connection (decreasing congestion)
-            # current_satellite.connections.remove(next_satellite)
-            # next_satellite.connections.remove(current_satellite)
-
-            # Move to the next satellite
-            current_satellite = next_satellite
-            path.append(current_satellite)
-
-            if is_final:
-                break
-
-        return path
-
+        # Start training
+        self.train_thread.start()
 
     def train_init(self):
         if len(self.selected_indices) != 2:
@@ -465,10 +465,28 @@ class SpherePlot(QWidget):
         sat1 = self.selected_indices[0]
         sat2 = self.selected_indices[1]
 
-        self.path = self.constellation.train(self.satellites, start_index=sat1, end_index=sat2)
-        print("Training complete, optimal path:", self.path)
-        self.selected_indices = []
-        self.satellite_list.clearSelection()
+        self.train_multithread(start_index=sat1, end_index=sat2)
+        # self.selected_indices = []
+        # self.satellite_list.clearSelection()
+
+
+class TrainProcess(QObject):
+    finished = pyqtSignal()
+    progress = pyqtSignal(str)  # Emit progress updates
+    results = Queue()
+
+    def __init__(self, constellation, satellites, start_index, end_index, iterations):
+        super().__init__()
+        self.constellation = constellation
+        self.satellites = satellites
+        self.start_index = start_index
+        self.end_index = end_index
+        self.iterations = iterations
+
+    def run(self):
+        # Run train function in the background
+        self.constellation.train_wrapper(self.satellites, self.start_index, self.end_index, self.iterations, self.results)
+        self.finished.emit()
 
 class CoordinateEditor(QWidget):
     value_changed = QtCore.pyqtSignal(float, float, float, float)
