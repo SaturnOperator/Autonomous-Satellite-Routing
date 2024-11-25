@@ -3,15 +3,16 @@
 ### Dependencies
 
 - Python 3.9+ 
-- **[PyQt5](https://pypi.org/project/PyQt5/)**: For the GUI
-- **[matplotlib](https://pypi.org/project/matplotlib/)**: For 3D plotting capabilities 
+- **[PyQt5](https://pypi.org/project/PyQt5/)** for the GUI
+- **[numpy](https://pypi.org/project/numpy/)** for math calculations  
+- **[matplotlib](https://pypi.org/project/matplotlib/)** for 3D plotting 
 
 ### Setup
 
 Install the dependencies using the latest version of Pip:
 
 ```bash
-pip install PyQt5 matplotlib
+pip install PyQt5 numpy matplotlib
 ```
 
 ### Run Instructions

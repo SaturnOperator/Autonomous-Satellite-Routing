@@ -39,6 +39,7 @@ class MplCanvas(FigureCanvas):
 class SpherePlot(QWidget):
     EARTH_RADIUS_KM = 6371  # Radius of Earth in kilometers
     TIMER_INTERVAL = 100
+    path = []
 
     def __init__(self, satellites):
         super().__init__()
@@ -153,7 +154,11 @@ class SpherePlot(QWidget):
         distribute_menu.addAction(self.uniform_speed_action)
         distribute_menu.addAction(self.random_speed_action)
 
-
+        # Add menu for routing
+        train_menu = self.menubar.addMenu("Route")
+        self.train_action = QAction("Train Q-Learning")
+        self.train_action.triggered.connect(self.train_init)
+        train_menu.addAction(self.train_action)
         
         self.setLayout(main_layout)
         self.setWindowTitle("3D Sphere Plot with Satellite Editor")
@@ -178,14 +183,14 @@ class SpherePlot(QWidget):
             arc_x, arc_y, arc_z = zip(*arc_points)
             self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_BLUE, linestyle='--', linewidth=1) # arcline
 
-        elif len(self.selected_indices) > 2:
-            pairs = [[self.selected_indices[i], self.selected_indices[i + 1]] for i in range(len(self.selected_indices) - 1)]
+        elif len(self.path) > 1:
+            pairs = [[self.path[i], self.path[i + 1]] for i in range(len(self.path) - 1)]
             for pair in pairs:
-                sat1 = self.satellites[pair[0]]
-                sat2 = self.satellites[pair[1]]
+                sat1 = pair[0]
+                sat2 = pair[1]
                 arc_points = self.calculate_great_circle_arc(sat1, sat2)
                 arc_x, arc_y, arc_z = zip(*arc_points)
-                self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_BLUE, linestyle='--', linewidth=1) # arcline
+                self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_GREEN, linestyle='-', linewidth=1) # arcline
 
 
         # Draw a vertical line through the center
@@ -239,7 +244,7 @@ class SpherePlot(QWidget):
             self.editor_widget.setEnabled(False)
             sat1 = self.satellites[self.selected_indices[0]]
             sat2 = self.satellites[self.selected_indices[1]]
-            distance = self.calculate_distance(sat1, sat2)
+            distance = sat1.calculate_distance(sat2)
             self.distance_label.setText(f"Distance: {distance:.2f} km")
         else:
             self.editor_widget.setEnabled(True)
@@ -258,18 +263,6 @@ class SpherePlot(QWidget):
             satellite.height = height
             satellite.speed = speed
             self.plot_points()
-
-    def calculate_distance(self, sat1, sat2):
-        lat1, lon1 = np.radians([sat1.latitude, sat1.longitude])
-        lat2, lon2 = np.radians([sat2.latitude, sat2.longitude])
-
-        dlat = lat2 - lat1
-        dlon = lon2 - lon1
-
-        a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
-        c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
-
-        return self.EARTH_RADIUS_KM * c
 
     def calculate_great_circle_arc(self, sat1, sat2, num_points=50):
         # Convert lat/lon to radians
@@ -332,7 +325,7 @@ class SpherePlot(QWidget):
             # Update the distance label if two satellites are selected
             sat1 = self.satellites[self.selected_indices[0]]
             sat2 = self.satellites[self.selected_indices[1]]
-            distance = self.calculate_distance(sat1, sat2)
+            distance = sat1.calculate_distance(sat2)
             self.distance_label.setText(f"Distance: {distance:.2f} km")
 
     def distribute_grid(self):
@@ -429,6 +422,63 @@ class SpherePlot(QWidget):
         for i in range(len(self.satellites)):
             self.satellites[i].speed = np.random.uniform(0.5, 1)
 
+    def train_iteration(self, start_satellite, end_satellite):
+        current_satellite = start_satellite
+        path = [current_satellite]
+        while current_satellite != end_satellite:
+            state_current = current_satellite.get_state(end_satellite)
+            possible_actions = current_satellite.get_possible_actions(self.satellites)
+            if not possible_actions:
+                # No possible actions; terminate the iteration
+                break
+
+            action_current = current_satellite.choose_action(state_current, possible_actions)
+            next_satellite = action_current
+
+            # Simulate adding a connection (increasing congestion)
+            # current_satellite.connections.append(next_satellite)
+            # next_satellite.connections.append(current_satellite)
+
+            state_next = next_satellite.get_state(end_satellite)
+            reward = current_satellite.get_reward(state_next, next_satellite == end_satellite)
+            current_satellite.update_q_value(state_current, action_current, reward, state_next, self.satellites)
+
+            # Simulate removing the connection (decreasing congestion)
+            # current_satellite.connections.remove(next_satellite)
+            # next_satellite.connections.remove(current_satellite)
+
+            # Move to the next satellite
+            current_satellite = next_satellite
+            path.append(current_satellite)
+
+            if is_final:
+                break
+
+        return path
+
+
+    def train_init(self):
+        if len(self.selected_indices) != 2:
+            return
+            
+        MAX_ITERATIONS = 2000
+        print("Starting Q-Learning Training:")
+        for i in range(MAX_ITERATIONS):
+            print("\t%d/%d" % (i, MAX_ITERATIONS))
+            start_satellite = self.satellites[self.selected_indices[0]]
+            end_satellite = self.satellites[self.selected_indices[1]]
+            
+            # Reset connections for all satellites
+            for sat in self.satellites:
+                sat.connections = []
+            
+            # Train for one iteration
+            optimal_path = self.train_iteration(start_satellite, end_satellite)
+
+        self.path = optimal_path
+        print("Training complete, optimal path:", self.path)
+        self.selected_indices = []
+        self.satellite_list.clearSelection()
 
 class CoordinateEditor(QWidget):
     value_changed = QtCore.pyqtSignal(float, float, float, float)
