@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from satellite import Satellite
+from satellite import Satellite, Constellation
 
 # Colour palette 
 COLOUR_LIGHT_BLUE = "#A5A9F4"
@@ -44,6 +44,7 @@ class SpherePlot(QWidget):
     def __init__(self, satellites):
         super().__init__()
         self.satellites = satellites
+        self.constellation = Constellation()
         self.selected_indices = []  # Track selected satellite indices
         self.scatter_plot = None
         self.pause = False  # Pause state
@@ -460,22 +461,11 @@ class SpherePlot(QWidget):
     def train_init(self):
         if len(self.selected_indices) != 2:
             return
-            
-        MAX_ITERATIONS = 2000
-        print("Starting Q-Learning Training:")
-        for i in range(MAX_ITERATIONS):
-            print("\t%d/%d" % (i, MAX_ITERATIONS))
-            start_satellite = self.satellites[self.selected_indices[0]]
-            end_satellite = self.satellites[self.selected_indices[1]]
-            
-            # Reset connections for all satellites
-            for sat in self.satellites:
-                sat.connections = []
-            
-            # Train for one iteration
-            optimal_path = self.train_iteration(start_satellite, end_satellite)
+        
+        sat1 = self.selected_indices[0]
+        sat2 = self.selected_indices[1]
 
-        self.path = optimal_path
+        self.path = self.constellation.train(self.satellites, start_index=sat1, end_index=sat2)
         print("Training complete, optimal path:", self.path)
         self.selected_indices = []
         self.satellite_list.clearSelection()
