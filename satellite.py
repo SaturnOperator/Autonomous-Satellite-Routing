@@ -6,6 +6,7 @@ class Satellite:
     # State Thresholds
     DELAY_LOW = 1000 # Max distance for low LATENCY
     DELAY_MEDIUM = 5000 # Max distance for medium LATENCY, anything above is high
+    DELAY_HIGH = 0 # Max distance, don't accept anything above this value
     CONGESTION_LOW = 1 # Max connections for low congestion,
     CONGESTION_MEDIUM = 3 # Max connections for medium congestion, anything above is high
     CONGESTION_HIGH = 5 # Can't accept connections after this value
@@ -27,7 +28,7 @@ class Satellite:
         self.latitude = latitude
         self.height = height
         self.speed = speed  # Speed in degrees per update cycle
-        self.connections = [] # Number active connections 
+        self.num_connections = 0 # Number active connections 
         self.Q = {}
         self.satellites # Other satellites in the constellation network
     
@@ -98,9 +99,9 @@ class Satellite:
             return Satellite.latency_matrix[self.index][other.index]
 
     def check_congestion(self):
-        if len(self.connections) <= self.CONGESTION_LOW:
+        if self.num_connections <= self.CONGESTION_LOW:
             return 'low'
-        elif len(self.connections) <= self.CONGESTION_MEDIUM:
+        elif self.num_connections <= self.CONGESTION_MEDIUM:
             return 'medium'
         else:
             return 'high'
@@ -117,12 +118,21 @@ class Satellite:
         #     if not self.out_of_sight(sat) and sat != self:
         #         possible_actions.append(sat)
 
-        for i, visible in enumerate(Satellite.visibility_matrix[self.index]):
+        for i in range(len(self.satellites)):
+            visible = Satellite.visibility_matrix[self.index][i]
             if visible and i != self.index:
                 sat = Satellite.satellites[i]
+
                 # Check if satellite is congested (max number connections)
-                if len(sat.connections) < self.CONGESTION_HIGH:
-                    possible_actions.append(sat)
+                if sat.num_connections < self.CONGESTION_HIGH:
+                    if self.DELAY_HIGH:
+                        distance = Satellite.distance_matrix[self.index][i]
+                        if distance < self.DELAY_HIGH:
+                            possible_actions.append(sat)
+                    else:
+                        possible_actions.append(sat)
+               
+
         return possible_actions
 
     def get_reward(self, state, is_final=False, relay_penalty=-1):

@@ -4,7 +4,7 @@ from multiprocessing import Queue
 from satellite import Satellite
 
 class Constellation:
-    MAX_ITERATIONS = 5000
+    MAX_ITERATIONS = 3000
     iteration_count = 0
 
     def precompute_matrices(self, satellites):
@@ -70,8 +70,8 @@ class Constellation:
             next_satellite = action_current
 
             # Simulate adding a connection (increasing congestion)
-            # current_satellite.connection_count += 1
-            # next_satellite.connection_count += 1
+            # current_satellite.num_connections += 1
+            # next_satellite.num_connections += 1
 
             is_final = next_satellite == end_satellite
             state_next = next_satellite.get_state(end_satellite.index)
@@ -82,8 +82,8 @@ class Constellation:
             )
 
             # Simulate removing the connection (decreasing congestion)
-            # current_satellite.connection_count -= 1
-            # next_satellite.connection_count -= 1
+            # current_satellite.num_connections -= 1
+            # next_satellite.num_connections -= 1
 
             # Move to the next satellite
             current_satellite = next_satellite
@@ -105,8 +105,9 @@ class Constellation:
             print(f"\t{i+1}/{self.MAX_ITERATIONS}")
             self.iteration_count = i+1
             # Reset connections for all satellites
-            for sat in self.satellites:
-                sat.connection_count = 0
+            # for sat in self.satellites:
+            #     sat.num_connections = 0
+            
             # Train for one episode
             optimal_path = self.train_iteration(start_satellite, end_satellite)
 

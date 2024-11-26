@@ -33,6 +33,8 @@ COLOUR_GREEN_DIM = "#22392E"
 COLOUR_PURPLE ="#895DD0"
 COLOUR_PURPLE_DIM = "#352647"
 
+COLOUR_ORANGE = "#E07636"
+
 class MplCanvas(FigureCanvas):
     def __init__(self):
         fig = Figure(facecolor='black')
@@ -49,6 +51,7 @@ class SpherePlot(QWidget):
         super().__init__()
         self.satellites = satellites
         self.constellation = Constellation()
+        self.paths = PathWidget(self.satellites)
         self.selected_indices = []  # Track selected satellite indices
         self.scatter_plot = None
         self.pause = False  # Pause state
@@ -70,14 +73,14 @@ class SpherePlot(QWidget):
         canvas_layout = QVBoxLayout(self.canvas_container)
         canvas_layout.addWidget(self.canvas)
         
-        # Satellite list with multi-selection
+        # Satellite list
         self.satellite_list = QListWidget()
         self.satellite_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         for i in range(len(self.satellites)):
             self.satellite_list.addItem(f"Satellite {i}")
 
         # Connect list selection to handler
-        self.satellite_list.itemSelectionChanged.connect(self.on_satellite_selected)
+        self.satellite_list.itemSelectionChanged.connect(self.on_satellite_select)
 
         # Coordinate and Speed editor
         self.editor_widget = CoordinateEditor()
@@ -114,6 +117,7 @@ class SpherePlot(QWidget):
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.train_params, "Train")
+        self.tabs.addTab(self.paths, "Routes")
         self.tabs.addTab(self.editor_widget, "Satellites")
 
         left_layout.addWidget(self.tabs)
@@ -174,7 +178,7 @@ class SpherePlot(QWidget):
 
         self.plot_points() # Update graph
         self.setLayout(main_layout)
-        self.setWindowTitle("3D Sphere Plot with Satellite Editor")
+        self.setWindowTitle("Multi-Agent Satellite Routing Simulator")
         self.setGeometry(100, 100, 1000, 600)
         self.show()
 
@@ -183,18 +187,25 @@ class SpherePlot(QWidget):
         self.canvas.ax.clear()
         self.canvas.ax.set_facecolor('black')
 
-        # Plot each satellite's position
-        # colors = [COLOUR_RED if i in self.selected_indices else COLOUR_WHITE for i in range(len(self.satellites))]
-        
+        color_order = [COLOUR_GREEN, COLOUR_BLUE, COLOUR_PURPLE, COLOUR_RED]
+
         colors = [COLOUR_WHITE] * len(self.satellites) # Init all as white
 
+        # Plot each satellite's position
+        for n, path in enumerate(self.paths.paths):
+            for i in path:
+                # Color based on path index and color order
+                colors[i] = color_order[n % len(color_order)] if self.satellites[i].num_connections <= 1 else COLOUR_LIGHT_BLUE 
+
         for i, sat in enumerate(self.satellites):
-            if sat.index in self.path:
-                colors[i] = COLOUR_GREEN
             if i in self.selected_indices:
                 colors[i] = COLOUR_RED
 
-
+            selected_path = self.paths.path_list.selectedIndexes()
+            if(selected_path):
+                current_selection = selected_path[0].row()
+                if i in self.paths.paths[current_selection]:
+                    colors[i] = COLOUR_ORANGE
 
         coords = np.array([satellite.get_cartesian_coordinates() for satellite in self.satellites])
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
@@ -208,14 +219,23 @@ class SpherePlot(QWidget):
             arc_x, arc_y, arc_z = zip(*arc_points)
             self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_BLUE, linestyle='--', linewidth=1) # arcline
 
-        if len(self.path) > 1:
-            pairs = [[self.path[i], self.path[i + 1]] for i in range(len(self.path) - 1)]
-            for pair in pairs:
-                sat1 = self.satellites[pair[0]]
-                sat2 = self.satellites[pair[1]]
-                arc_points = self.calculate_great_circle_arc(sat1, sat2)
-                arc_x, arc_y, arc_z = zip(*arc_points)
-                self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_GREEN, linestyle='-', linewidth=1) # arcline
+        if len(self.paths.paths) > 0:
+            path = self.paths.paths[0]
+            for n, path in enumerate(self.paths.paths):
+                selected_path = self.paths.path_list.selectedIndexes()
+                if(selected_path):
+                    current_selection = selected_path[0].row() == n
+                    color = color_order[n % len(color_order)] if not current_selection else COLOUR_ORANGE
+                else:
+                    color = color_order[n % len(color_order)]
+
+                pairs = [[path[i], path[i + 1]] for i in range(len(path) - 1)]
+                for pair in pairs:
+                    sat1 = self.satellites[pair[0]]
+                    sat2 = self.satellites[pair[1]]
+                    arc_points = self.calculate_great_circle_arc(sat1, sat2)
+                    arc_x, arc_y, arc_z = zip(*arc_points)
+                    self.canvas.ax.plot(arc_x, arc_y, arc_z, color=color, linestyle='-', linewidth=1) # arcline
 
 
         # Draw a vertical line through the center
@@ -263,7 +283,7 @@ class SpherePlot(QWidget):
             self.selected_indices = [selection] # Update selection in graph view
             self.satellite_list.item(selection).setSelected(True) # Update selection in list view
 
-    def on_satellite_selected(self):
+    def on_satellite_select(self):
         self.selected_indices = [index.row() for index in self.satellite_list.selectedIndexes()]
         if len(self.selected_indices) == 2:
             pass
@@ -274,6 +294,9 @@ class SpherePlot(QWidget):
                 satellite = self.satellites[self.selected_indices[0]]
                 self.editor_widget.set_sliders(satellite.longitude, satellite.latitude, satellite.height, satellite.speed)
         self.plot_points()
+
+    def on_path_select(self):
+        pass
 
     def update_satellite_attributes(self, longitude, latitude, height, speed):
         if len(self.selected_indices) == 1:
@@ -447,8 +470,7 @@ class SpherePlot(QWidget):
 
     def get_train_results(self):
         results = self.train_worker.results.get()
-        print(results)
-        self.path = [sat.index for sat in results]
+        self.paths.add_path([sat.index for sat in results])
 
     def train_multithread(self, start_index, end_index):
         # Runs training on its own process to not slow down other operations
@@ -511,6 +533,7 @@ class TrainParameters(QWidget):
             'EPSILON': Satellite.EPSILON,
             'DELAY_LOW': Satellite.DELAY_LOW,
             'DELAY_MEDIUM': Satellite.DELAY_MEDIUM,
+            'DELAY_HIGH': Satellite.DELAY_HIGH,
             'CONGESTION_LOW': Satellite.CONGESTION_LOW,
             'CONGESTION_MEDIUM': Satellite.CONGESTION_MEDIUM,
             'CONGESTION_HIGH': Satellite.CONGESTION_HIGH,
@@ -528,7 +551,6 @@ class TrainParameters(QWidget):
         # Add max_iterations parameter
         self.max_iterations_spinbox = QSpinBox()
         self.max_iterations_spinbox.setRange(1, 100000)
-        self.max_iterations_spinbox.setValue(5000)  # Default value
         self.max_iterations_spinbox.valueChanged.connect(self.update_max_iterations)
         form_layout.addRow(QLabel("Max Iterations:"), self.max_iterations_spinbox)
 
@@ -536,53 +558,51 @@ class TrainParameters(QWidget):
         self.alpha_spinbox = QDoubleSpinBox()
         self.alpha_spinbox.setRange(0.0, 1.0)
         self.alpha_spinbox.setSingleStep(0.01)
-        self.alpha_spinbox.setValue(Satellite.ALPHA)
         self.alpha_spinbox.valueChanged.connect(self.update_alpha)
         form_layout.addRow(QLabel("Learning Rate (α):"), self.alpha_spinbox)
 
         self.gamma_spinbox = QDoubleSpinBox()
         self.gamma_spinbox.setRange(0.0, 1.0)
         self.gamma_spinbox.setSingleStep(0.01)
-        self.gamma_spinbox.setValue(Satellite.GAMMA)
         self.gamma_spinbox.valueChanged.connect(self.update_gamma)
         form_layout.addRow(QLabel("Discount Factor (γ):"), self.gamma_spinbox)
 
         self.epsilon_spinbox = QDoubleSpinBox()
         self.epsilon_spinbox.setRange(0.0, 1.0)
         self.epsilon_spinbox.setSingleStep(0.01)
-        self.epsilon_spinbox.setValue(Satellite.EPSILON)
         self.epsilon_spinbox.valueChanged.connect(self.update_epsilon)
         form_layout.addRow(QLabel("Exploration Rate (ε):"), self.epsilon_spinbox)
 
         self.delay_low_spinbox = QSpinBox()
         self.delay_low_spinbox.setRange(0, 100000)
-        self.delay_low_spinbox.setValue(Satellite.DELAY_LOW)
         self.delay_low_spinbox.valueChanged.connect(self.update_delay_low)
         form_layout.addRow(QLabel("Low Latency Thresh:"), self.delay_low_spinbox)
 
         self.delay_medium_spinbox = QSpinBox()
         self.delay_medium_spinbox.setRange(0, 100000)
-        self.delay_medium_spinbox.setValue(Satellite.DELAY_MEDIUM)
         self.delay_medium_spinbox.valueChanged.connect(self.update_delay_medium)
         form_layout.addRow(QLabel("Medium Latency Thresh:"), self.delay_medium_spinbox)
 
+        self.delay_high_spinbox = QSpinBox()
+        self.delay_high_spinbox.setRange(0, 400100)
+        self.delay_high_spinbox.valueChanged.connect(self.update_delay_high)
+        form_layout.addRow(QLabel("High Latency Thresh:"), self.delay_high_spinbox)
+
         self.congestion_low_spinbox = QSpinBox()
         self.congestion_low_spinbox.setRange(0, 100)
-        self.congestion_low_spinbox.setValue(Satellite.CONGESTION_LOW)
         self.congestion_low_spinbox.valueChanged.connect(self.update_congestion_low)
         form_layout.addRow(QLabel("Low Congestion Thresh:"), self.congestion_low_spinbox)
 
         self.congestion_medium_spinbox = QSpinBox()
         self.congestion_medium_spinbox.setRange(0, 100)
-        self.congestion_medium_spinbox.setValue(Satellite.CONGESTION_MEDIUM)
         self.congestion_medium_spinbox.valueChanged.connect(self.update_congestion_medium)
         form_layout.addRow(QLabel("Medium Congestion Thresh:"), self.congestion_medium_spinbox)
 
         self.congestion_high_spinbox = QSpinBox()
         self.congestion_high_spinbox.setRange(0, 100)
-        self.congestion_high_spinbox.setValue(Satellite.CONGESTION_HIGH)
         self.congestion_high_spinbox.valueChanged.connect(self.update_congestion_high)
         form_layout.addRow(QLabel("High Congestion Thresh:"), self.congestion_high_spinbox)
+
 
         # Add form to the main layout
         main_layout.addLayout(form_layout)
@@ -600,6 +620,7 @@ class TrainParameters(QWidget):
         self.progress_bar.setValue(self.constellation.iteration_count)
         main_layout.addWidget(self.progress_bar)
 
+        self.reset_defaults()
 
         main_layout.addLayout(button_layout)
         self.setLayout(main_layout)
@@ -630,6 +651,10 @@ class TrainParameters(QWidget):
         Satellite.DELAY_MEDIUM = value
         self.parameter_changed.emit("DELAY_MEDIUM", value)
 
+    def update_delay_high(self, value):
+        Satellite.DELAY_HIGH = value
+        self.parameter_changed.emit("DELAY_HIGH", value)
+
     def update_congestion_low(self, value):
         Satellite.CONGESTION_LOW = value
         self.parameter_changed.emit("CONGESTION_LOW", value)
@@ -654,9 +679,79 @@ class TrainParameters(QWidget):
         self.epsilon_spinbox.setValue(self.defaults['EPSILON'])
         self.delay_low_spinbox.setValue(self.defaults['DELAY_LOW'])
         self.delay_medium_spinbox.setValue(self.defaults['DELAY_MEDIUM'])
+        self.delay_high_spinbox.setValue(self.defaults['DELAY_HIGH'])
         self.congestion_low_spinbox.setValue(self.defaults['CONGESTION_LOW'])
         self.congestion_medium_spinbox.setValue(self.defaults['CONGESTION_MEDIUM'])
         self.congestion_high_spinbox.setValue(self.defaults['CONGESTION_HIGH'])
+
+from PyQt5.QtWidgets import QWidget, QFormLayout, QListWidget, QPushButton, QAbstractItemView, QMessageBox
+from PyQt5.QtCore import Qt
+
+
+class PathWidget(QWidget):
+
+    def __init__(self, satellites):
+        super().__init__()
+        self.paths = []
+        self.satellites = satellites
+        self.initUI()
+
+    def initUI(self):
+        layout = QFormLayout()
+        
+        # Path list
+        self.path_list = QListWidget()
+        self.path_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.path_list.itemSelectionChanged.connect(self.on_path_select)
+        layout.addWidget(self.path_list)
+
+        # Delete button
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.clicked.connect(self.delete_path)
+        layout.addWidget(self.delete_button)
+        
+        self.setLayout(layout)
+
+    def add_path(self, new_path):
+        if not new_path:
+            return
+        
+        # Assuming new_path is a list of objects
+        start = new_path[0]
+        end = new_path[-1]
+
+        for i in new_path:
+            self.satellites[i].num_connections += 1
+
+        # Represent the path as a range (first object's index -> last object's index)
+        path_range = f"(%d): %s" % (len(new_path), new_path)
+        
+        # Append the path to the list and update the display
+        self.paths.append(new_path)
+        self.path_list.addItem(path_range)
+
+    def delete_path(self):
+        selected = self.path_list.selectedIndexes()
+        
+        if not selected:
+            return
+        
+        # Iterate through selected items and remove them from paths
+        for row in selected:
+            index = row.row()
+            
+            # Delete the connection from the satellites
+            for sat in self.paths[index]:
+                self.satellites[sat].num_connections -= 1
+            
+            # Delete path
+            del self.paths[index]
+            self.path_list.takeItem(index)
+
+    def on_path_select(self):
+        pass
+
+
 
 class CoordinateEditor(QWidget):
     value_changed = QtCore.pyqtSignal(float, float, float, float)
