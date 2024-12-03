@@ -1,6 +1,5 @@
 import numpy as np
-from multiprocessing import Queue
-
+from collections import deque
 from satellite import Satellite
 
 class Constellation:
@@ -124,8 +123,71 @@ class Constellation:
             else:
                 print("error", str(e))
 
+    def flood(self, satellites, start_index, end_index):
+        connections = []  # To store the connections formed during flooding
+        visited = set()    # To keep track of satellites that have already sent the signal
+        queue = deque()
+
+        # Initialize the flood sequence from start satellite
+        self.precompute_matrices(satellites)
+        queue.append(start_index)
+        visited.add(start_index)
+
+        while queue:
+            current_index = queue.popleft()
+            neighbouring_satellites = [sat.index for sat in self.satellites[current_index].get_possible_actions()]
+
+            for next_index in neighbouring_satellites:
+                if next_index not in visited:
+                    connections.append([self.satellites[current_index], self.satellites[next_index]]) # Keep track of all connections
+                    queue.append(next_index) # Add neighbouring sats to the queue
+                    visited.add(next_index)
+
+                    # Check if the end_satellite has been reached
+                    if next_index == end_index:
+                        return connections
+
+        return connections
+
+    def compare_routing_methods(self, satellites, start_index=None, end_index=None, mas_optimized_path=[], non_optimized_path=[]):
+        # MAS-optimized Path using Q-Learning
+        if(non_optimized_path == []): # If a path is passed in then don't re-calculate path
+            mas_optimized_path = self.train(satellites=satellites, start_index=start_index, end_index=end_index)
+
+        # Non-optimized Path using Flooding
+        if(non_optimized_path == []): # If a path is passed in then don't re-calculate path
+            non_optimized_path = self.flood(satellites=satellites, start_index=start_index, end_index=end_index)
+
+        mas_optimized_stats = {
+            'path': mas_optimized_path,
+            'distance': 0,
+            'num_satellites': len(mas_optimized_path)
+        }
+        non_optimized_stats = {
+            'path': non_optimized_path,
+            'distance': 0,
+            'num_satellites': len(non_optimized_path)
+        }
+
+        # Calculate total distance for MAS-optimized route
+        if len(mas_optimized_path) > 1:
+            for i in range(len(mas_optimized_path) - 1):
+                a = mas_optimized_path[i].index
+                b = mas_optimized_path[i+1].index
+                mas_optimized_stats['distance'] += Satellite.distance_matrix[a][b]
+
+        # Calculate total distance for non-optimized route
+        if len(non_optimized_path) > 1:
+            for i in range(len(non_optimized_path) - 1):
+                a = non_optimized_path[i][0].index
+                b = non_optimized_path[i][1].index
+                non_optimized_stats['distance'] += Satellite.distance_matrix[a][b]
+
+        return {"optimal": mas_optimized_stats, "non-optimal": non_optimized_stats}
+
 def test():
-    # Example usage:
+    test_size = 1
+
     num_satellites = 100 # Initialize with 100 satellites
     satellites = [
         Satellite(
@@ -137,7 +199,20 @@ def test():
     ]
 
     network = Constellation()
-    optimal_path = network.train(satellites, start_index=0, end_index=87)
+    data = []
+
+    for _ in range(test_size):
+        optimal_path = network.train(satellites, start_index=0, end_index=87)
+        flood_path = network.flood(satellites, start_index=0, end_index=87)
+        results = network.compare_routing_methods(satellites, mas_optimized_path=optimal_path, non_optimized_path=flood_path)
+
+        # results = network.compare_routing_methods(satellites, start_index=0, end_index=87)
+        data.append(results)
+
+        print("\n*******************************************************************")
+        print("Results:")
+        print(" -> Non-optimal Path (Used %3d satellites): %d KM" % (results['non-optimal']['num_satellites'], results['non-optimal']['distance']))
+        print(" ->     Optimal Path (Used %3d satellites): %d KM" % (results['optimal']['num_satellites'], results['optimal']['distance']))
 
 if __name__ == '__main__':
     test()

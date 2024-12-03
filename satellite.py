@@ -86,13 +86,6 @@ class Satellite:
         return distance
 
     def check_latency(self, other):
-        # distance = self.calculate_distance(other)
-        # if distance <= self.DELAY_LOW:
-        #     return 'low'
-        # elif distance <= self.DELAY_MEDIUM:
-        #     return 'medium'
-        # else:
-        #     return 'high'
         if(type(other) == int):
             return Satellite.latency_matrix[self.index][other]
         elif(type(other) == Satellite):
@@ -113,10 +106,6 @@ class Satellite:
 
     def get_possible_actions(self):
         possible_actions = []
-
-        # for sat in self.satellites:
-        #     if not self.out_of_sight(sat) and sat != self:
-        #         possible_actions.append(sat)
 
         for i in range(len(self.satellites)):
             visible = Satellite.visibility_matrix[self.index][i]
