@@ -38,7 +38,7 @@ COLOUR_ORANGE = "#E07636"
 class MplCanvas(FigureCanvas):
     def __init__(self):
         fig = Figure(facecolor='black')
-        self.ax = fig.add_subplot(111, projection='3d', frame_on=False)
+        self.ax = fig.add_subplot(111, projection='3d')
         fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
         super().__init__(fig)
 
