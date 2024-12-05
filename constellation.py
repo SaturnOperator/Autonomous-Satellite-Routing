@@ -162,14 +162,14 @@ class Constellation:
             non_optimized_path = self.flood(satellites=satellites, start_index=start_index, end_index=end_index)
 
         mas_optimized_stats = {
-            'path': mas_optimized_path,
+            'path': [sat.index for sat in mas_optimized_path],
             'distance': 0,
             'num_satellites': len(mas_optimized_path),
             'true_distance' : Satellite.distance_matrix[start_index][end_index]
         }
 
         non_optimized_stats = {
-            'path': non_optimized_path,
+            'path': [[sat[0].index, sat[1].index] for sat in non_optimized_path],
             'distance': 0,
             'num_satellites': len(non_optimized_path),
             'true_distance' : Satellite.distance_matrix[start_index][end_index]
@@ -230,7 +230,7 @@ def test():
 
     import json
     with open("output.json", "w") as save_file: 
-        json.dump(data, save_file)
+        json.dump(data, save_file, indent=True)
 
 if __name__ == '__main__':
     test()

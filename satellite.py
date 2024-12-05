@@ -149,3 +149,6 @@ class Satellite:
             max_q = max(q_values)
             best_actions = [a for a, q in zip(possible_actions, q_values) if q == max_q]
             return np.random.choice(best_actions)
+
+    def __repr__(self):
+        return f"sat_%03d" % self.index
