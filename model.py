@@ -45,7 +45,6 @@ class MplCanvas(FigureCanvas):
 class SpherePlot(QWidget):
     EARTH_RADIUS_KM = 6371  # Radius of Earth in kilometers
     TIMER_INTERVAL = 100
-    path = []
 
     def __init__(self, satellites):
         super().__init__()
@@ -59,6 +58,7 @@ class SpherePlot(QWidget):
         self.update_graph_timer = QtCore.QTimer()
         self.update_graph_timer.timeout.connect(self.update_graph)
         self.start_timer()
+        self.flood_colour = False
 
     def initUI(self):
         main_layout = QHBoxLayout()
@@ -171,6 +171,9 @@ class SpherePlot(QWidget):
         self.train_action = QAction("Train Q-Learning")
         self.train_action.triggered.connect(self.train_init)
         train_menu.addAction(self.train_action)
+        self.flood_action = QAction("Flood Route")
+        self.flood_action.triggered.connect(self.flood_route)
+        train_menu.addAction(self.flood_action)
 
         self.train_button = QPushButton("Route Satellites")
         self.train_button.clicked.connect(self.train_init)
@@ -195,7 +198,10 @@ class SpherePlot(QWidget):
         for n, path in enumerate(self.paths.paths):
             for i in path:
                 # Color based on path index and color order
-                colors[i] = color_order[n % len(color_order)] if self.satellites[i].num_connections <= 1 else COLOUR_LIGHT_BLUE 
+                if(self.flood_colour):
+                    colors[i] = COLOUR_LIGHT_BLUE
+                else:
+                    colors[i] = color_order[n % len(color_order)] if self.satellites[i].num_connections <= 1 else COLOUR_LIGHT_BLUE 
 
         for i, sat in enumerate(self.satellites):
             if i in self.selected_indices:
@@ -220,14 +226,25 @@ class SpherePlot(QWidget):
             self.canvas.ax.plot(arc_x, arc_y, arc_z, color=COLOUR_BLUE, linestyle='--', linewidth=1) # arcline
 
         if len(self.paths.paths) > 0:
-            path = self.paths.paths[0]
+            last_start = None
+            colour_index = 0
+
             for n, path in enumerate(self.paths.paths):
-                selected_path = self.paths.path_list.selectedIndexes()
-                if(selected_path):
-                    current_selection = selected_path[0].row() == n
-                    color = color_order[n % len(color_order)] if not current_selection else COLOUR_ORANGE
+                if self.flood_colour:
+                    current_start = path[0]
+                    if current_start != last_start:
+                        colour_index += 1
+                        last_start = current_start
+                    # Else, keep the same colour_index
                 else:
-                    color = color_order[n % len(color_order)]
+                    colour_index = n
+
+                selected_path = self.paths.path_list.selectedIndexes()
+                if selected_path:
+                    current_selection = selected_path[0].row() == n
+                    color = color_order[colour_index % len(color_order)] if not current_selection else COLOUR_ORANGE
+                else:
+                    color = color_order[colour_index % len(color_order)]
 
                 pairs = [[path[i], path[i + 1]] for i in range(len(path) - 1)]
                 for pair in pairs:
@@ -235,7 +252,8 @@ class SpherePlot(QWidget):
                     sat2 = self.satellites[pair[1]]
                     arc_points = self.calculate_great_circle_arc(sat1, sat2)
                     arc_x, arc_y, arc_z = zip(*arc_points)
-                    self.canvas.ax.plot(arc_x, arc_y, arc_z, color=color, linestyle='-', linewidth=1) # arcline
+                    self.canvas.ax.plot(arc_x, arc_y, arc_z, color=color, linestyle='-', linewidth=1)  # arcline
+
 
 
         # Draw a vertical line through the center
@@ -493,10 +511,21 @@ class SpherePlot(QWidget):
         
         sat1 = self.selected_indices[0]
         sat2 = self.selected_indices[1]
-
+        self.flood_colour = False
         self.train_multithread(start_index=sat1, end_index=sat2)
-        # self.selected_indices = []
-        # self.satellite_list.clearSelection()
+
+
+    def flood_route(self):
+        if len(self.selected_indices) != 2:
+            return
+        
+        sat1 = self.selected_indices[0]
+        sat2 = self.selected_indices[1]
+        flood_map = self.constellation.flood(self.satellites, sat1, sat2)
+        # self.paths.add_path(flood_map)
+        self.flood_colour = True
+        for pair in flood_map:
+            self.paths.add_path([sat.index for sat in pair])
 
 
 class TrainProcess(QObject):
@@ -721,7 +750,10 @@ class PathWidget(QWidget):
         end = new_path[-1]
 
         for i in new_path:
-            self.satellites[i].num_connections += 1
+            if(type(i) == list):
+                pass
+            else:
+                self.satellites[i].num_connections += 1
 
         # Represent the path as a range (first object's index -> last object's index)
         path_range = f"(%d): %s" % (len(new_path), new_path)
