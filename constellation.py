@@ -153,6 +153,9 @@ class Constellation:
         # MAS-optimized Path using Q-Learning
         if(non_optimized_path == []): # If a path is passed in then don't re-calculate path
             mas_optimized_path = self.train(satellites=satellites, start_index=start_index, end_index=end_index)
+        else:
+            start_index = mas_optimized_path[0].index
+            end_index = mas_optimized_path[-1].index
 
         # Non-optimized Path using Flooding
         if(non_optimized_path == []): # If a path is passed in then don't re-calculate path
@@ -161,12 +164,15 @@ class Constellation:
         mas_optimized_stats = {
             'path': mas_optimized_path,
             'distance': 0,
-            'num_satellites': len(mas_optimized_path)
+            'num_satellites': len(mas_optimized_path),
+            'true_distance' : Satellite.distance_matrix[start_index][end_index]
         }
+
         non_optimized_stats = {
             'path': non_optimized_path,
             'distance': 0,
-            'num_satellites': len(non_optimized_path)
+            'num_satellites': len(non_optimized_path),
+            'true_distance' : Satellite.distance_matrix[start_index][end_index]
         }
 
         # Calculate total distance for MAS-optimized route
@@ -202,17 +208,29 @@ def test():
     data = []
 
     for _ in range(test_size):
-        optimal_path = network.train(satellites, start_index=0, end_index=87)
-        flood_path = network.flood(satellites, start_index=0, end_index=87)
-        results = network.compare_routing_methods(satellites, mas_optimized_path=optimal_path, non_optimized_path=flood_path)
+        print("Starting test %d/%d" % (_, test_size))
+        # optimal_path = network.train(satellites, start_index=0, end_index=87)
+        # flood_path = network.flood(satellites, start_index=0, end_index=87)
+        # results = network.compare_routing_methods(satellites, mas_optimized_path=optimal_path, non_optimized_path=flood_path)
 
-        # results = network.compare_routing_methods(satellites, start_index=0, end_index=87)
+        sat1 = int(np.random.uniform(0, num_satellites))
+        sat2 = int(np.random.uniform(0, num_satellites))
+        while sat1 == sat2:
+            sat2 = int(np.random.uniform(0, num_satellites))
+
+        results = network.compare_routing_methods(satellites, start_index=sat1, end_index=sat2)
         data.append(results)
 
         print("\n*******************************************************************")
         print("Results:")
+        print(" -> True distance between the 2 satellites: %d KM" % (results['optimal']['true_distance']))
         print(" -> Non-optimal Path (Used %3d satellites): %d KM" % (results['non-optimal']['num_satellites'], results['non-optimal']['distance']))
         print(" ->     Optimal Path (Used %3d satellites): %d KM" % (results['optimal']['num_satellites'], results['optimal']['distance']))
+        print()
+
+    import json
+    with open("output.json", "w") as save_file: 
+        json.dump(data, save_file)
 
 if __name__ == '__main__':
     test()
